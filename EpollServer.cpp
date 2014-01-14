@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
+#include <pthread.h>
 
 int SocketFD::closeFD()
 {
@@ -119,7 +120,7 @@ static int accept_connection(int sfd)
 	if (res == 0)
 	{
 		printf("Accepted connection on descriptor %d "
-				"(host=%s, port=%s)\n", infd, hbuf, sbuf);
+				"(host=%s, port=%s, thread=%x)\n", infd, hbuf, sbuf, pthread_self());
 	}
 
 	return infd;
@@ -197,6 +198,26 @@ int EpollServer::init(const char *port)
 
 int EpollServer::run(int thread_number)
 {
+	pthread_t *tid;
+
+	tid = (pthread_t*)malloc(thread_number * sizeof(*tid));
+
+	for (int i = 0; i < thread_number; ++i) {
+		pthread_create(&tid[i], NULL, &staticRunLoop, (EventLoop*)this);
+		printf("thread %x created\n", tid[i]);
+	}
+
+	for (int i = 0; i < thread_number; ++i) {
+		pthread_join(tid[i], NULL);
+	}
+}
+
+int EpollServer::stop()
+{
+}
+
+void *EpollServer::runLoop()
+{
 	struct epoll_event *events;
 
 	events = (struct epoll_event*)calloc(MAXEVENTS, sizeof *events);
@@ -210,10 +231,10 @@ int EpollServer::run(int thread_number)
 				(events[i].events & EPOLLHUP) ||
 				(!(events[i].events & EPOLLIN)))
 			{
-				fprintf(stderr, "epoll error\n");
 				if ((SocketFD*)this == events[i].data.ptr) {
-					closeFD();
+					fprintf(stderr, "epoll error on listening fd\n");
 				} else {
+					fprintf(stderr, "epoll error on working fd\n");
 					((TcpConnection*)(SocketFD*)events[i].data.ptr)->closeConnection();
 				}
 			} else if ((SocketFD*)this == events[i].data.ptr) {
@@ -225,15 +246,6 @@ int EpollServer::run(int thread_number)
 		}
 	}
 	free(events);
-}
-
-int EpollServer::stop()
-{
-}
-
-void *EpollServer::EventLoop::run()
-{
 	return NULL;
 }
-
 

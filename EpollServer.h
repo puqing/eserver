@@ -5,7 +5,16 @@ protected:
 	int closeFD();
 };
 
-class EpollServer : SocketFD
+class EventLoop
+{
+protected:
+	virtual void *runLoop() = 0;
+	static void *staticRunLoop(void *data) {
+		return ((EventLoop*)data)->runLoop();
+	}
+};
+
+class EpollServer : SocketFD, EventLoop
 {
 
 public:
@@ -17,13 +26,6 @@ private:
 	EventHandler *mEventHandler;
 	int mEPFD;
 
-	class EventLoop
-	{
-	public:
-		void *run();
-		static void *static_run(EventLoop *data) { data->run(); }
-	};
-
 public:
 	void setEventHandler(EventHandler *event_handler)
 	{
@@ -34,5 +36,7 @@ public:
 	int init(const char *port);
 	int run(int thread_number);
 	int stop();
+
+	virtual void *runLoop();
 };
 

@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
+#include <pthread.h>
 
 void TcpConnection::readAllData()
 {
@@ -39,20 +40,8 @@ void TcpConnection::readAllData()
 		}
 
 		/* Write the buffer to standard output */
-		res = write(1, buf, count);
-		if (res == -1)
-		{
-			perror ("write");
-			abort ();
-		}
-
-		res = write(1, "\n", 1);
-		if (res == -1)
-		{
-			perror ("newline");
-			abort ();
-		}
-
+		printf(buf, count);
+		printf(" (thread=%x)\n", pthread_self());
 	}
 
 	if (done)
@@ -68,6 +57,6 @@ void TcpConnection::readAllData()
 void TcpConnection::closeConnection()
 {
 	closeFD();
-	delete this;
+//	delete this;
 }
 
