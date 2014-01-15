@@ -1,6 +1,3 @@
-#include "EpollServer.h"
-#include "TcpConnection.h"
-
 #include <stdio.h>
 #include <string.h>
 #include <netdb.h>
@@ -9,11 +6,14 @@
 #include <unistd.h>
 #include <pthread.h>
 
-void TcpConnection::readAllData()
+#include "EpollServer.h"
+#include "ObjectQueue.h"
+#include "Connection.h"
+#include "ConnectionManager.h"
+
+void Connection::readAllData()
 {
 	int done = 0;
-	int res;
-
 	while (1)
 	{
 		ssize_t count;
@@ -26,6 +26,9 @@ void TcpConnection::readAllData()
 			   data. So go back to the main loop. */
 			if (errno != EAGAIN)
 			{
+/*				printf("[%x:%x:%d] ",
+						(unsigned int)this,
+						(unsigned int)pthread_self(), mFD);*/
 				perror ("read");
 				done = 1;
 			}
@@ -37,26 +40,33 @@ void TcpConnection::readAllData()
 			   connection. */
 			done = 1;
 			break;
+		} else {
+			/* Write the buffer to standard output */
+			buf[count]='\0';
+			printf("[%x:%x:%d] ", (unsigned int)this, (unsigned int)pthread_self(), mFD);
+			printf("%s\n", buf);
 		}
-
-		/* Write the buffer to standard output */
-		printf(buf, count);
-		printf(" (thread=%x)\n", pthread_self());
 	}
 
 	if (done)
 	{
-		printf ("Closed connection on descriptor %d\n", mFD);
-
 		/* Closing the descriptor will make epoll remove it
 		   from the set of descriptors which are monitored. */
-		closeConnection();
+
+		if (mFD != -1) {
+			printf ("[%x:%x:%d] Closing connection\n",
+				(unsigned int)this, (unsigned int)pthread_self(), mFD);
+			closeConnection();
+		}
 	}
 }
 
-void TcpConnection::closeConnection()
+extern ConnectionManager gConnectionManager;
+
+void Connection::closeConnection()
 {
 	closeFD();
 //	delete this;
+	gConnectionManager.recycle(this);
 }
 

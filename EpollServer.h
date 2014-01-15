@@ -3,6 +3,7 @@ class SocketFD
 protected:
 	int mFD;
 	int closeFD();
+	virtual ~SocketFD() { closeFD();}
 };
 
 class EventLoop
@@ -12,6 +13,7 @@ protected:
 	static void *staticRunLoop(void *data) {
 		return ((EventLoop*)data)->runLoop();
 	}
+	virtual ~EventLoop() { }
 };
 
 class EpollServer : SocketFD, EventLoop
@@ -38,5 +40,7 @@ public:
 	int stop();
 
 	virtual void *runLoop();
+
+	virtual ~EpollServer() {};
 };
 

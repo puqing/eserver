@@ -1,6 +1,3 @@
-#include "EpollServer.h"
-#include "TcpConnection.h"
-
 #include <stdio.h>
 #include <string.h>
 #include <sys/epoll.h>
@@ -10,6 +7,13 @@
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
+
+#include "EpollServer.h"
+#include "ObjectQueue.h"
+#include "Connection.h"
+#include "ConnectionManager.h"
+
+ConnectionManager gConnectionManager(1024);
 
 int SocketFD::closeFD()
 {
@@ -119,8 +123,9 @@ static int accept_connection(int sfd)
 			NI_NUMERICHOST | NI_NUMERICSERV);
 	if (res == 0)
 	{
-		printf("Accepted connection on descriptor %d "
-				"(host=%s, port=%s, thread=%x)\n", infd, hbuf, sbuf, pthread_self());
+		printf("[%x:%d] Accepted connection"
+				"(host=%s, port=%s)\n",
+				 (unsigned int)pthread_self(), infd, hbuf, sbuf);
 	}
 
 	return infd;
@@ -144,7 +149,7 @@ void EpollServer::acceptAllConnection()
 			break;
 		}
 
-		event.data.ptr = (SocketFD*)new TcpConnection(infd);
+		event.data.ptr = (SocketFD*)gConnectionManager.get(infd);
 		event.events = EPOLLIN | EPOLLET;
 		res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, infd, &event);
 		if (res == -1)
@@ -194,6 +199,7 @@ int EpollServer::init(const char *port)
 		abort ();
 	}
 
+	return 0;
 }
 
 int EpollServer::run(int thread_number)
@@ -204,16 +210,19 @@ int EpollServer::run(int thread_number)
 
 	for (int i = 0; i < thread_number; ++i) {
 		pthread_create(&tid[i], NULL, &staticRunLoop, (EventLoop*)this);
-		printf("thread %x created\n", tid[i]);
+		printf("thread %x created\n", (unsigned int)tid[i]);
 	}
 
 	for (int i = 0; i < thread_number; ++i) {
 		pthread_join(tid[i], NULL);
 	}
+
+	return 0;
 }
 
 int EpollServer::stop()
 {
+	return 0;
 }
 
 void *EpollServer::runLoop()
@@ -235,12 +244,12 @@ void *EpollServer::runLoop()
 					fprintf(stderr, "epoll error on listening fd\n");
 				} else {
 					fprintf(stderr, "epoll error on working fd\n");
-					((TcpConnection*)(SocketFD*)events[i].data.ptr)->closeConnection();
+					((Connection*)(SocketFD*)events[i].data.ptr)->closeConnection();
 				}
 			} else if ((SocketFD*)this == events[i].data.ptr) {
 				acceptAllConnection();
 			} else {
-				((TcpConnection*)(SocketFD*)events[i].data.ptr)->readAllData();
+				((Connection*)(SocketFD*)events[i].data.ptr)->readAllData();
 			}
 
 		}
