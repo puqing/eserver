@@ -244,10 +244,10 @@ void *EpollServer::runLoop()
 	while(1)
 	{
 		int n = epoll_wait(mEPFD, events, MAXEVENTS, -1);
-		for ( int i = 0; i < n; ++i) {
-			syslog(LOG_INFO, "%d %d %d %d", i, ((Connection*)(SocketFD*)events[i].data.ptr)->getFD(),
-					events[i].events & EPOLLIN, events[i].events & EPOLLOUT);
-		}
+//		for ( int i = 0; i < n; ++i) {
+//			syslog(LOG_INFO, "%d %d %d %d", i, ((Connection*)(SocketFD*)events[i].data.ptr)->getFD(),
+//					events[i].events & EPOLLIN, events[i].events & EPOLLOUT);
+//		}
 		for (int i = 0; i < n; ++i)
 		{
 			if ((events[i].events & EPOLLERR) ||
