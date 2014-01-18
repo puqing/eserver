@@ -7,13 +7,19 @@
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <syslog.h>
+#include <assert.h>
 
 #include "EpollServer.h"
 #include "ObjectQueue.h"
 #include "Connection.h"
 #include "ConnectionManager.h"
 
+#define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
+
 ConnectionManager gConnectionManager(1024);
+
+EpollServer gEpollServer;
 
 int SocketFD::closeFD()
 {
@@ -36,7 +42,8 @@ static int create_and_bind (const char *port)
 	res = getaddrinfo(NULL, port, &hints, &result);
 	if (res != 0)
 	{
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror (res));
+//		syslog(LOG_ERROR, "getaddrinfo: %s\n", gai_strerror (res));
+		SYSLOG_ERROR("getaddrinfo");
 		return -1;
 	}
 
@@ -58,7 +65,8 @@ static int create_and_bind (const char *port)
 
 	if (rp == NULL)
 	{
-		fprintf(stderr, "Could not bind\n");
+//		syslog(LOG_ERROR, "%s", "Could not bind\n");
+		SYSLOG_ERROR("bind");
 		return -1;
 	}
 
@@ -74,7 +82,8 @@ static int make_socket_non_blocking (int sfd)
 	flags = fcntl(sfd, F_GETFL, 0);
 	if (flags == -1)
 	{
-		perror ("fcntl");
+//		syslog(LOG_ERROR, "%s: %s", "fcntl", strerror(errno));
+		SYSLOG_ERROR("fcntl");
 		close(sfd);
 		return -1;
 	}
@@ -83,7 +92,8 @@ static int make_socket_non_blocking (int sfd)
 	res = fcntl (sfd, F_SETFL, flags);
 	if (res == -1)
 	{
-		perror ("fcntl");
+//		syslog(LOG_ERROR, "%s: %s", "fcntl", strerror(errno));
+		SYSLOG_ERROR("fcntl");
 		close(sfd);
 		return -1;
 	}
@@ -112,7 +122,7 @@ static int accept_connection(int sfd)
 		}
 		else
 		{
-			perror ("accept");
+			SYSLOG_ERROR("accept");
 			return -1;
 		}
 	}
@@ -154,7 +164,7 @@ void EpollServer::acceptAllConnection()
 		res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, infd, &event);
 		if (res == -1)
 		{
-			perror ("epoll_ctl");
+			SYSLOG_ERROR("epoll_ctl");
 			abort ();
 		}
 	}
@@ -177,7 +187,7 @@ int EpollServer::init(const char *port)
 	res = listen(sfd, SOMAXCONN);
 	if (res == -1)
 	{
-		perror ("listen");
+		SYSLOG_ERROR("listen");
 		abort ();
 	}
 
@@ -186,7 +196,7 @@ int EpollServer::init(const char *port)
 	mEPFD = epoll_create1 (0);
 	if (mEPFD == -1)
 	{
-		perror ("epoll_create");
+		SYSLOG_ERROR("epoll_create");
 		abort ();
 	}
 
@@ -195,7 +205,7 @@ int EpollServer::init(const char *port)
 	res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, sfd, &event);
 	if (res == -1)
 	{
-		perror ("epoll_ctl");
+		SYSLOG_ERROR("epoll_ctl");
 		abort ();
 	}
 
@@ -210,7 +220,7 @@ int EpollServer::run(int thread_number)
 
 	for (int i = 0; i < thread_number; ++i) {
 		pthread_create(&tid[i], NULL, &staticRunLoop, (EventLoop*)this);
-		printf("thread %x created\n", (unsigned int)tid[i]);
+		syslog(LOG_INFO, "thread %x created\n", (unsigned int)tid[i]);
 	}
 
 	for (int i = 0; i < thread_number; ++i) {
@@ -234,27 +244,72 @@ void *EpollServer::runLoop()
 	while(1)
 	{
 		int n = epoll_wait(mEPFD, events, MAXEVENTS, -1);
+		for ( int i = 0; i < n; ++i) {
+			syslog(LOG_INFO, "%d %d %d %d", i, ((Connection*)(SocketFD*)events[i].data.ptr)->getFD(),
+					events[i].events & EPOLLIN, events[i].events & EPOLLOUT);
+		}
 		for (int i = 0; i < n; ++i)
 		{
 			if ((events[i].events & EPOLLERR) ||
 				(events[i].events & EPOLLHUP) ||
-				(!(events[i].events & EPOLLIN)))
+				((!(events[i].events & EPOLLIN)) &&
+				!(events[i].events & EPOLLOUT)))
 			{
 				if ((SocketFD*)this == events[i].data.ptr) {
-					fprintf(stderr, "epoll error on listening fd\n");
+					syslog(LOG_INFO, "%s", "epoll error on listening fd\n");
 				} else {
-					fprintf(stderr, "epoll error on working fd\n");
+					syslog(LOG_INFO, "%s", "epoll error on working fd\n");
 					((Connection*)(SocketFD*)events[i].data.ptr)->closeConnection();
 				}
 			} else if ((SocketFD*)this == events[i].data.ptr) {
 				acceptAllConnection();
 			} else {
-				((Connection*)(SocketFD*)events[i].data.ptr)->readAllData();
+				assert((events[i].events & EPOLLOUT) || (events[i].events & EPOLLIN));
+				if (events[i].events & EPOLLOUT) {
+					((Connection*)(SocketFD*)events[i].data.ptr)->sendBufferedData();
+				}
+				if (events[i].events & EPOLLIN) {
+					((Connection*)(SocketFD*)events[i].data.ptr)->readAllData();
+				}
 			}
 
 		}
 	}
 	free(events);
 	return NULL;
+}
+
+int EpollServer::pollSending(int fd, void *ptr)
+{
+	struct epoll_event event;
+	int res;
+
+	event.data.ptr = ptr;
+	event.events = EPOLLOUT | EPOLLET | EPOLLIN;
+	res = epoll_ctl(mEPFD, EPOLL_CTL_MOD, fd, &event);
+	if (res == -1)
+	{
+		SYSLOG_ERROR("epoll_ctl");
+		return -1;
+	} else {
+		return 0;
+	}
+}
+
+int EpollServer::stopSending(int fd, void *ptr)
+{
+	struct epoll_event event;
+	int res;
+
+	event.data.ptr = ptr;
+	event.events = EPOLLET | EPOLLIN;
+	res = epoll_ctl(mEPFD, EPOLL_CTL_MOD, fd, &event);
+	if (res == -1)
+	{
+		SYSLOG_ERROR("epoll_ctl");
+		return -1;
+	} else {
+		return 0;
+	}
 }
 

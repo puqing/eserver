@@ -38,6 +38,8 @@ public:
 	int init(const char *port);
 	int run(int thread_number);
 	int stop();
+	int pollSending(int fd, void *ptr);
+	int stopSending(int fd, void *ptr);
 
 	virtual void *runLoop();
 

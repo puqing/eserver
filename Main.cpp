@@ -1,19 +1,23 @@
+#include <syslog.h>
+
 #include "EpollServer.h"
+
+extern EpollServer gEpollServer;
 
 int main(int argc, char *argv[])
 {
 
-	EpollServer *es;
+	openlog("game_server", 0, LOG_USER);
+	syslog(LOG_INFO, "server start");
 
-	es = new EpollServer;
+	gEpollServer.init("8888");
 
-	es->init("8888");
+	gEpollServer.run(8);
 
-	es->run(8);
+	gEpollServer.stop();
 
-	es->stop();
-
-	delete es;
+	syslog(LOG_INFO, "server stop");
+	closelog();
 
 	return 0;
 }
