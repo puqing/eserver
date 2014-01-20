@@ -1,10 +1,10 @@
-class SocketFD
+/*class SocketFD
 {
 protected:
 	int mFD;
 	int closeFD();
 	virtual ~SocketFD() { }
-};
+};*/
 
 class EventLoop
 {
@@ -16,7 +16,7 @@ protected:
 	virtual ~EventLoop() { }
 };
 
-class EpollServer : SocketFD, EventLoop
+class EpollServer : EventLoop
 {
 
 public:
@@ -26,6 +26,7 @@ public:
 
 private:
 	EventHandler *mEventHandler;
+	int mFD;
 	int mEPFD;
 
 public:

@@ -160,9 +160,9 @@ void EpollServer::acceptAllConnection()
 			break;
 		}
 
-		event.data.ptr = (SocketFD*)gConnectionManager.get(infd);
+		event.data.ptr = (Connection*)gConnectionManager.get(infd);
 		event.events = EPOLLIN | EPOLLET;
-		res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, ((Connection*)(SocketFD*)event.data.ptr)->getFD(), &event);
+		res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, ((Connection*)event.data.ptr)->getFD(), &event);
 		if (res == -1)
 		{
 			SYSLOG_ERROR("epoll_ctl");
@@ -201,7 +201,7 @@ int EpollServer::init(const char *port)
 		abort ();
 	}
 
-	event.data.ptr = (SocketFD*)this;
+	event.data.ptr = this;
 	event.events = EPOLLIN | EPOLLET;
 	res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, sfd, &event);
 	if (res == -1)
@@ -246,7 +246,7 @@ void *EpollServer::runLoop()
 	{
 		int n = epoll_wait(mEPFD, events, MAXEVENTS, -1);
 		for ( int i = 0; i < n; ++i) {
-			syslog(LOG_INFO, "%x: %d :%d: %d %d", (unsigned int)pthread_self(), i, ((Connection*)(SocketFD*)events[i].data.ptr)->getFD(),
+			syslog(LOG_INFO, "%x: %d :%d: %d %d", (unsigned int)pthread_self(), i, ((Connection*)events[i].data.ptr)->getFD(),
 					events[i].events & EPOLLIN, events[i].events & EPOLLOUT);
 		}
 		for (int i = 0; i < n; ++i)
@@ -256,21 +256,21 @@ void *EpollServer::runLoop()
 				((!(events[i].events & EPOLLIN)) &&
 				!(events[i].events & EPOLLOUT)))
 			{
-				if ((SocketFD*)this == events[i].data.ptr) {
+				if (this == events[i].data.ptr) {
 					syslog(LOG_INFO, "%s", "epoll error on listening fd\n");
 				} else {
 					syslog(LOG_INFO, "%s", "epoll error on working fd\n");
-					((Connection*)(SocketFD*)events[i].data.ptr)->closeConnection();
+					((Connection*)events[i].data.ptr)->closeConnection();
 				}
-			} else if ((SocketFD*)this == events[i].data.ptr) {
+			} else if (this == events[i].data.ptr) {
 				acceptAllConnection();
 			} else {
 				assert((events[i].events & EPOLLOUT) || (events[i].events & EPOLLIN));
 				if (events[i].events & EPOLLOUT) {
-					((Connection*)(SocketFD*)events[i].data.ptr)->sendBufferedData();
+					((Connection*)events[i].data.ptr)->sendBufferedData();
 				}
 				if (events[i].events & EPOLLIN) {
-					((Connection*)(SocketFD*)events[i].data.ptr)->readAllData();
+					((Connection*)events[i].data.ptr)->readAllData();
 				}
 			}
 

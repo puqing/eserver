@@ -1,5 +1,6 @@
-class Connection : SocketFD, ObjectQueueItem
+class Connection : ObjectQueueItem
 {
+	int mFD;
 	char *mWriteBuffer;
 	char *mWriteBufferEnd;
 	pthread_mutex_t mWriteBufferLock;
