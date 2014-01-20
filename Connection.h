@@ -3,9 +3,10 @@ class Connection : SocketFD, ObjectQueueItem
 	char *mWriteBuffer;
 	char *mWriteBufferEnd;
 	pthread_mutex_t mWriteBufferLock;
+	unsigned int mReading;
+	pthread_mutex_t mReadLock;
 public:
 	Connection();
-	Connection(int fd) { mFD = fd; }
 	void readAllData();
 	void closeConnection();
 	int sendData(char *data, size_t num);

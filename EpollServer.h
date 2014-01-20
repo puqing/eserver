@@ -3,7 +3,7 @@ class SocketFD
 protected:
 	int mFD;
 	int closeFD();
-	virtual ~SocketFD() { closeFD();}
+	virtual ~SocketFD() { }
 };
 
 class EventLoop

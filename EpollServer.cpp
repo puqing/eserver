@@ -17,16 +17,17 @@
 
 #define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
 
-ConnectionManager gConnectionManager(1024);
+extern ConnectionManager gConnectionManager;
 
 EpollServer gEpollServer;
 
-int SocketFD::closeFD()
+/*int SocketFD::closeFD()
 {
-	int fd = mFD;
-	mFD = -1;
-	return close(fd);
-}
+//	int fd = mFD;
+//	mFD = -1;
+//	return close(fd);
+	return close(mFD);
+}*/
 
 static int create_and_bind (const char *port)
 {
@@ -133,7 +134,7 @@ static int accept_connection(int sfd)
 			NI_NUMERICHOST | NI_NUMERICSERV);
 	if (res == 0)
 	{
-		printf("[%x:%d] Accepted connection"
+		syslog(LOG_INFO, "[%x:%d] Accepted connection"
 				"(host=%s, port=%s)\n",
 				 (unsigned int)pthread_self(), infd, hbuf, sbuf);
 	}
@@ -161,7 +162,7 @@ void EpollServer::acceptAllConnection()
 
 		event.data.ptr = (SocketFD*)gConnectionManager.get(infd);
 		event.events = EPOLLIN | EPOLLET;
-		res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, infd, &event);
+		res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, ((Connection*)(SocketFD*)event.data.ptr)->getFD(), &event);
 		if (res == -1)
 		{
 			SYSLOG_ERROR("epoll_ctl");
@@ -244,10 +245,10 @@ void *EpollServer::runLoop()
 	while(1)
 	{
 		int n = epoll_wait(mEPFD, events, MAXEVENTS, -1);
-//		for ( int i = 0; i < n; ++i) {
-//			syslog(LOG_INFO, "%d %d %d %d", i, ((Connection*)(SocketFD*)events[i].data.ptr)->getFD(),
-//					events[i].events & EPOLLIN, events[i].events & EPOLLOUT);
-//		}
+		for ( int i = 0; i < n; ++i) {
+			syslog(LOG_INFO, "%x: %d :%d: %d %d", (unsigned int)pthread_self(), i, ((Connection*)(SocketFD*)events[i].data.ptr)->getFD(),
+					events[i].events & EPOLLIN, events[i].events & EPOLLOUT);
+		}
 		for (int i = 0; i < n; ++i)
 		{
 			if ((events[i].events & EPOLLERR) ||

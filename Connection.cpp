@@ -22,64 +22,60 @@ extern EpollServer gEpollServer;
 Connection::Connection()
 {
 	mFD = -1;
+	mReading = 0;
 	mWriteBufferEnd = mWriteBuffer = (char*)malloc(WRITE_BUFFER_SIZE);
 	pthread_mutex_init(&mWriteBufferLock, NULL);
+	pthread_mutex_init(&mReadLock, NULL);
 }
 
 void Connection::readAllData()
 {
-	int done = 0;
+
+	pthread_mutex_lock(&mReadLock);
+	if (!mReading) {
+		mReading = pthread_self();;
+		pthread_mutex_unlock(&mReadLock);
+	} else {
+		pthread_mutex_unlock(&mReadLock);
+		syslog(LOG_INFO, "[%x:%x:%d:] fd is reading by another thread %x", (unsigned int)this, (unsigned int)pthread_self(), mFD, mReading);
+		return;
+	}
+
 	while (1)
 	{
 		ssize_t count;
-		char buf[512];
+		char buf[15];
 
+		pthread_mutex_lock(&mReadLock);
 		count = read(mFD, buf, sizeof buf);
-		if (count == -1)
-		{
-			/* If errno == EAGAIN, that means we have read all
-			   data. So go back to the main loop. */
-			if (errno != EAGAIN)
-			{
-				SYSLOG_ERROR("read");
-				done = 1;
-			}
-			break;
-		}
-		else if (count == 0)
-		{
-			/* End of file. The remote has closed the
-			   connection. */
-			done = 1;
-			break;
-		} else {
-			/* Write the buffer back to the sender */
-//			buf[count]='\0';
+		syslog(LOG_INFO, "[%x:%x:%d:] count = %d", (unsigned int)this, (unsigned int)pthread_self(), mFD, count);
+
+		if (count > 0) {
+			pthread_mutex_unlock(&mReadLock);
 			sendData(buf, count);
-/*			count = write(mFD, buf, count);
-			if (count < 0) {
-				if (errno != EAGAIN) {
-					SYSLOG_ERROR("write");
-					done = 1;
-					break;
-				}
-				done = delaySending();
-			}*/
-//			printf("[%x:%x:%d] ", (unsigned int)this, (unsigned int)pthread_self(), mFD);
-//			printf("%s\n", buf);
-		}
-	}
-
-	if (done)
-	{
-		/* Closing the descriptor will make epoll remove it
-		   from the set of descriptors which are monitored. */
-
-		if (mFD != -1) {
-			printf ("[%x:%x:%d] Closing connection\n",
+			continue;
+		} else if (count == 0) {
+			/* End of file. The remote has closed the connection. */
+			syslog(LOG_INFO, "[%x:%x:%d:] Remote closed\n",
 				(unsigned int)this, (unsigned int)pthread_self(), mFD);
 			closeConnection();
+			mReading = 0;
+			pthread_mutex_unlock(&mReadLock);
+		} else {
+			assert(count == -1);
+			mReading = 0;
+			pthread_mutex_unlock(&mReadLock);
+			if (errno == EAGAIN)
+			{
+				syslog(LOG_INFO, "[%x:%x:%d:] EAGAIN", (unsigned int)this, (unsigned int)pthread_self(), mFD);
+			} else {
+				SYSLOG_ERROR("read");
+				syslog(LOG_ERR, "[%x:%x:%d:] Error encountered\n",
+					(unsigned int)this, (unsigned int)pthread_self(), mFD);
+//				closeConnection();
+			}
 		}
+		break;
 	}
 }
 
@@ -87,35 +83,12 @@ extern ConnectionManager gConnectionManager;
 
 void Connection::closeConnection()
 {
-	closeFD();
+//	closeFD();
 //	delete this;
+	close(mFD);
+	mReading = 0;
 	gConnectionManager.recycle(this);
 }
-
-/*
- * return value:
- * 0: all right
- * 1: error occured
- */
-/*int Connection::delaySending()
-{
-	pthread_mutex_lock(mWriteBufferLock);
-	if (mWriteBufferEnd + count > mWriteBuffer + WRITE_BUFFER_SIZE) {
-		syslog(LOG_ERR, "write buffer overflow, size required: %d",
-				mWriteBufferEnd - mWriteBuffer + count);
-		pthread_mutex_unlock(mWriteBufferLock);
-		return 1;
-	}
-	memcpy(mWriteBufferEnd, buf, count);
-	mWriteBufferEnd += count;
-	pthread_mutex_unlock(mWriteBufferLock);
-
-	return 0;
-}*/
-
-/*int Connection::haveDataToSend()
-{
-}*/
 
 int Connection::sendData(char *data, size_t num)
 {
