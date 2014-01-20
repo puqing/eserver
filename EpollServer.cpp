@@ -161,7 +161,7 @@ void EpollServer::acceptAllConnection()
 		}
 
 		event.data.ptr = (Connection*)gConnectionManager.get(infd);
-		event.events = EPOLLIN | EPOLLET;
+		event.events = EPOLLIN | EPOLLOUT | EPOLLET;
 		res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, ((Connection*)event.data.ptr)->getFD(), &event);
 		if (res == -1)
 		{
@@ -280,7 +280,7 @@ void *EpollServer::runLoop()
 	return NULL;
 }
 
-int EpollServer::pollSending(Connection *conn) //int fd, void *ptr)
+/*int EpollServer::pollSending(Connection *conn) //int fd, void *ptr)
 {
 	struct epoll_event event;
 	int res;
@@ -312,5 +312,5 @@ int EpollServer::stopSending(Connection *conn) //int fd, void *ptr)
 	} else {
 		return 0;
 	}
-}
+}*/
 
