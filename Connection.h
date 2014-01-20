@@ -10,7 +10,7 @@ class Connection : ObjectQueueItem
 	pthread_mutex_t mWriteBufferLock;
 public:
 	Connection();
-	void readAllData();
+	void readData();
 	void closeConnection();
 	int sendData(char *data, size_t num);
 	void sendBufferedData();

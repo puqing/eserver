@@ -29,7 +29,7 @@ Connection::Connection()
 	pthread_mutex_init(&mWriteBufferLock, NULL);
 }
 
-void Connection::readAllData()
+void Connection::readData()
 {
 
 	pthread_mutex_lock(&mReadLock);
@@ -56,7 +56,7 @@ void Connection::readAllData()
 			sendData(buf, count);
 			continue;
 		} else if (count == 0) {
-			/* End of file. The remote has closed the connection. */
+			/* The remote has closed the connection. */
 			syslog(LOG_INFO, "[%x:%x:%d:] Remote closed\n",
 				(unsigned int)this, (unsigned int)pthread_self(), mFD);
 			mReading = 0;

@@ -270,7 +270,7 @@ void *EpollServer::runLoop()
 					((Connection*)events[i].data.ptr)->sendBufferedData();
 				}
 				if (events[i].events & EPOLLIN) {
-					((Connection*)events[i].data.ptr)->readAllData();
+					((Connection*)events[i].data.ptr)->readData();
 				}
 			}
 
