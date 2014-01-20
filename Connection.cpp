@@ -105,82 +105,19 @@ int Connection::sendData(char *data, size_t num)
 
 	return 0;
 
-#if 0
-	int count;
-	size_t total = num;
-
-	assert(num != 0);
-
-	pthread_mutex_lock(&mWriteLock);
-	if (!mWriting) {
-		mWriting = pthread_self();
-		pthread_mutex_unlock(&mWriteLock);
-		// sendBufferedData(); !!!
-		// and check its return value,
-		// if succeeded, we send our new data
-		// if failed, we need to store new data in buffer and return
-		while (1) {
-			count = write(mFD, data, num);
-			assert(count != 0);
-			if (count > 0) {
-				assert(count <= (signed)num);
-				data += count;
-				num -= count;
-				if (0 == num) {
-					// sendBufferedData(); !!!
-					mWriting = 0;
-					return total;
-				}
-			} else {
-				assert(count == -1);
-				if (errno != EAGAIN) {
-					SYSLOG_ERROR("write");
-					syslog(LOG_ERR, "[%x:%x:%d:] Error encountered\n",
-						(unsigned int)this, (unsigned int)pthread_self(), mFD);
-					return -1;
-				}
-				break;
-			}
-		}
-	} else {
-		pthread_mutex_unlock(&mWriteLock);
-		syslog(LOG_INFO, "[%x:%x:%d:] fd is being written by another thread %x",
-				(unsigned int)this, (unsigned int)pthread_self(), mFD, mReading);
-	}
-
-	assert(num != 0);
-
-	// Another thread is writing the fd, or
-	// this thread is writing the fd, but we have to send buffered old data firstly, and it still cannot be sent, or
-	// buffer is empty, but new data cannot be totally sent out, so we got EAGAIN.
-	// In these cases, we need to store the unsent new data into buffer
-
-	int required_size;
-	required_size = mWriteBufferEnd-mWriteBuffer+num;
-	if (required_size > WRITE_BUFFER_SIZE) {
-		syslog(LOG_ERR, "write buffer overflow, size required: %d", required_size);
-		return -1;
-	}
-
-	pthread_mutex_lock(&mWriteBufferLock);
-	memcpy(mWriteBufferEnd, data, num);
-	mWriteBufferEnd += num;
-	pthread_mutex_unlock(&mWriteBufferLock);
-
-	return total-num;
-#endif
 }
 
 void Connection::sendBufferedData()
 {
 	int count;
 
-	if (mWriteBuffer == mWriteBufferEnd) {
-		return;
-	}
-
 	while (1) {
 		pthread_mutex_lock(&mWriteBufferLock);
+
+		if (mWriteBuffer == mWriteBufferEnd) {
+			pthread_mutex_unlock(&mWriteBufferLock);
+			break;
+		}
 
 		count = write(mFD, mWriteBuffer, mWriteBufferEnd-mWriteBuffer);
 		assert(count != 0);
