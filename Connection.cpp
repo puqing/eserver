@@ -48,7 +48,7 @@ void Connection::readAllData()
 
 		pthread_mutex_lock(&mReadLock);
 		count = read(mFD, buf, sizeof buf);
-		syslog(LOG_INFO, "[%x:%x:%d:] count = %d", (unsigned int)this, (unsigned int)pthread_self(), mFD, count);
+		syslog(LOG_INFO, "[%x:%x:%d:] %d bytes read", (unsigned int)this, (unsigned int)pthread_self(), mFD, count);
 
 		if (count > 0) {
 			pthread_mutex_unlock(&mReadLock);
@@ -58,8 +58,8 @@ void Connection::readAllData()
 			/* End of file. The remote has closed the connection. */
 			syslog(LOG_INFO, "[%x:%x:%d:] Remote closed\n",
 				(unsigned int)this, (unsigned int)pthread_self(), mFD);
-			closeConnection();
 			mReading = 0;
+			closeConnection();
 			pthread_mutex_unlock(&mReadLock);
 		} else {
 			assert(count == -1);
@@ -67,12 +67,11 @@ void Connection::readAllData()
 			pthread_mutex_unlock(&mReadLock);
 			if (errno == EAGAIN)
 			{
-				syslog(LOG_INFO, "[%x:%x:%d:] EAGAIN", (unsigned int)this, (unsigned int)pthread_self(), mFD);
+				syslog(LOG_INFO, "[%x:%x:%d:] EAGAIN while read", (unsigned int)this, (unsigned int)pthread_self(), mFD);
 			} else {
 				SYSLOG_ERROR("read");
 				syslog(LOG_ERR, "[%x:%x:%d:] Error encountered\n",
 					(unsigned int)this, (unsigned int)pthread_self(), mFD);
-//				closeConnection();
 			}
 		}
 		break;
@@ -83,10 +82,8 @@ extern ConnectionManager gConnectionManager;
 
 void Connection::closeConnection()
 {
-//	closeFD();
-//	delete this;
 	close(mFD);
-	mReading = 0;
+	assert(mReading == 0);
 	gConnectionManager.recycle(this);
 }
 
@@ -95,6 +92,10 @@ int Connection::sendData(char *data, size_t num)
 	int count;
 
 	count = write(mFD, data, num);
+
+	syslog(LOG_INFO, "[%x:%x:%d:] %d bytes written\n",
+		(unsigned int)this, (unsigned int)pthread_self(), mFD, count);
+
 	if (count == (signed)num) {
 		return count;
 	}
@@ -103,7 +104,6 @@ int Connection::sendData(char *data, size_t num)
 
 	if (errno != EAGAIN) {
 		SYSLOG_ERROR("write");
-		closeConnection();
 		return -1;;
 	}
 
@@ -116,14 +116,13 @@ int Connection::sendData(char *data, size_t num)
 	required_size = mWriteBufferEnd-mWriteBuffer+num;
 	if (required_size > WRITE_BUFFER_SIZE) {
 		syslog(LOG_ERR, "write buffer overflow, size required: %d", required_size);
-		closeConnection();
 		return -1;
 	}
 
 	pthread_mutex_lock(&mWriteBufferLock);
 	memcpy(mWriteBufferEnd, data, num);
 	mWriteBufferEnd += num;
-	gEpollServer.pollSending(mFD, this);
+	gEpollServer.pollSending(this);
 	pthread_mutex_unlock(&mWriteBufferLock);
 
 	return count;
@@ -139,7 +138,7 @@ int Connection::sendBufferedData()
 
 	if (count == mWriteBufferEnd-mWriteBuffer) {
 		mWriteBufferEnd = mWriteBuffer;
-		gEpollServer.stopSending(mFD, this);
+		gEpollServer.stopSending(this);
 		pthread_mutex_unlock(&mWriteBufferLock);
 		return 1;
 	}

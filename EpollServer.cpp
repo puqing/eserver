@@ -280,14 +280,14 @@ void *EpollServer::runLoop()
 	return NULL;
 }
 
-int EpollServer::pollSending(int fd, void *ptr)
+int EpollServer::pollSending(Connection *conn) //int fd, void *ptr)
 {
 	struct epoll_event event;
 	int res;
 
-	event.data.ptr = ptr;
+	event.data.ptr = conn;
 	event.events = EPOLLOUT | EPOLLET | EPOLLIN;
-	res = epoll_ctl(mEPFD, EPOLL_CTL_MOD, fd, &event);
+	res = epoll_ctl(mEPFD, EPOLL_CTL_MOD, conn->getFD(), &event);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("epoll_ctl");
@@ -297,14 +297,14 @@ int EpollServer::pollSending(int fd, void *ptr)
 	}
 }
 
-int EpollServer::stopSending(int fd, void *ptr)
+int EpollServer::stopSending(Connection *conn) //int fd, void *ptr)
 {
 	struct epoll_event event;
 	int res;
 
-	event.data.ptr = ptr;
+	event.data.ptr = conn;
 	event.events = EPOLLET | EPOLLIN;
-	res = epoll_ctl(mEPFD, EPOLL_CTL_MOD, fd, &event);
+	res = epoll_ctl(mEPFD, EPOLL_CTL_MOD, conn->getFD(), &event);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("epoll_ctl");
