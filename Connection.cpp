@@ -68,19 +68,16 @@ void Connection::readData()
 			/* The remote has closed the connection. */
 			syslog(LOG_INFO, "[%x:%x:%d:] Remote closed\n",
 				(unsigned int)this, (unsigned int)pthread_self(), mFD);
-			mReading = 0;
+//			mReading = 0;
 			closeConnection();
 			pthread_mutex_unlock(&mReadLock);
 		} else {
 			assert(count == -1);
 			mReading = 0;
 			pthread_mutex_unlock(&mReadLock);
-			if (errno == EAGAIN)
-			{
-				syslog(LOG_INFO, "[%x:%x:%d:] EAGAIN while read", (unsigned int)this, (unsigned int)pthread_self(), mFD);
-			} else {
-				SYSLOG_ERROR("read");
-				syslog(LOG_ERR, "[%x:%x:%d:] Error encountered\n",
+			SYSLOG_ERROR("read");
+			if (errno != EAGAIN) {
+				syslog(LOG_ERR, "[%x:%x:%d:] Error other than EAGAIN encountered\n",
 					(unsigned int)this, (unsigned int)pthread_self(), mFD);
 			}
 		}
@@ -129,7 +126,7 @@ void Connection::closeConnection()
 	close(mFD);
 	syslog(LOG_INFO, "[%x:%x:%d:] fd closed",
 		(unsigned int)this, (unsigned int)pthread_self(), mFD);
-	assert(mReading == 0);
+	assert(mReading != 0);
 	assert(mWriteBufferEnd == mWriteBuffer);
 	gConnectionManager.recycle(this);
 }
@@ -157,41 +154,47 @@ int Connection::sendData(const char *data, size_t num)
 
 void Connection::sendBufferedData()
 {
-	int count = 0;
+	int res = 0;
+	int total = 0;
 
 	while (1) {
 		pthread_mutex_lock(&mWriteBufferLock);
 
-/*		if (mWriteBuffer == mWriteBufferEnd) {
+		if (mWriteBuffer == mWriteBufferEnd) {
 			pthread_mutex_unlock(&mWriteBufferLock);
 			break;
-		}*/
+		}
 
-		count = write(mFD, mWriteBuffer, mWriteBufferEnd-mWriteBuffer);
-		if (count == 0) {
-			pthread_mutex_unlock(&mWriteBufferLock);
-			break;
-		} else if (count == mWriteBufferEnd-mWriteBuffer) {
+		res = write(mFD, mWriteBuffer, mWriteBufferEnd-mWriteBuffer);
+
+		assert(res != 0);
+
+		if (res == mWriteBufferEnd-mWriteBuffer) {
 			mWriteBufferEnd = mWriteBuffer;
 			pthread_mutex_unlock(&mWriteBufferLock);
+			total += res;
 			break;
-		} else if (count == -1) {
+		} else if (res == -1) {
 			pthread_mutex_unlock(&mWriteBufferLock);
+			SYSLOG_ERROR("write");
 			if (errno != EAGAIN) {
-				SYSLOG_ERROR("write");
-				syslog(LOG_ERR, "[%x:%x:%d:] Error encountered\n",
+				syslog(LOG_ERR, "[%x:%x:%d:] Error other than EAGAIN encountered\n",
 					(unsigned int)this, (unsigned int)pthread_self(), mFD);
 			}
 			break;
 		} else {
-			assert(count > 0 && count < mWriteBufferEnd-mWriteBuffer);
-			memcpy(mWriteBuffer, mWriteBuffer+count, mWriteBufferEnd-mWriteBuffer-count);
-			mWriteBufferEnd -= count;
+			assert(res > 0 && res < mWriteBufferEnd-mWriteBuffer);
+			syslog(LOG_INFO, "[%x:%x:%d:]Less data than required sent (%d < %d)\n",
+				(unsigned int)this, (unsigned int)pthread_self(), mFD, res, mWriteBufferEnd-mWriteBuffer);
+
+			memcpy(mWriteBuffer, mWriteBuffer+res, mWriteBufferEnd-mWriteBuffer-res);
+			mWriteBufferEnd -= res;
 			pthread_mutex_unlock(&mWriteBufferLock);
+			total += res;
 		}
 	}
 
-	syslog(LOG_INFO, "[%x:%x:%d:] %d bytes sent out via tcp",
-		(unsigned int)this, (unsigned int)pthread_self(), mFD, count);
+	syslog(LOG_INFO, "[%x:%x:%d:] %d bytes sent",
+		(unsigned int)this, (unsigned int)pthread_self(), mFD, total);
 }
 

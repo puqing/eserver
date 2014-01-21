@@ -46,6 +46,8 @@ Connection *ConnectionManager::get(int fd)
 
 	close(fd);
 
+	conn->mReading = 0;
+
 	return conn;
 }
 

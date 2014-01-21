@@ -29,7 +29,7 @@ EpollServer gEpollServer;
 	return close(mFD);
 }*/
 
-static int create_and_bind (const char *port)
+static int create_and_bind (int port)
 {
 //	struct addrinfo hints;
 //	struct addrinfo *result, *rp;
@@ -85,7 +85,7 @@ static int create_and_bind (const char *port)
 
 	memset(&addr, 0, sizeof addr);
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(8888);
+	addr.sin_port = htons(port);
 //	inet_pton(AF_INET, "10.0.2.15", &addr.sin_addr.s_addr);
 	res = bind(sfd, (struct sockaddr*)&addr, sizeof addr);
 	if (res == -1) {
@@ -116,6 +116,22 @@ static int make_socket_non_blocking (int sfd)
 //		syslog(LOG_ERROR, "%s: %s", "fcntl", strerror(errno));
 		SYSLOG_ERROR("fcntl");
 		close(sfd);
+		return -1;
+	}
+
+	return 0;
+}
+
+static int shrink_socket_send_buffer(int sfd)
+{
+	int size;
+	int res;
+
+	size = 20;
+
+	res = setsockopt(sfd, SOL_SOCKET, SO_SNDBUF, &size, sizeof size);
+	if (res == -1) {
+		perror("setsockopt");
 		return -1;
 	}
 
@@ -175,14 +191,26 @@ void EpollServer::acceptAllConnection()
 		}
 		
 		int res = make_socket_non_blocking(infd);
-		
+		if (res == -1) {
+			break;
+		}
+
+		res = shrink_socket_send_buffer(infd);
 		if (res == -1) {
 			break;
 		}
 
 		event.data.ptr = (Connection*)gConnectionManager.get(infd);
-		event.events = EPOLLIN | EPOLLOUT | EPOLLET;
-		res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, ((Connection*)event.data.ptr)->getFD(), &event);
+		event.events = EPOLLIN | EPOLLET;
+		res = epoll_ctl (mEPFDR, EPOLL_CTL_ADD, ((Connection*)event.data.ptr)->getFD(), &event);
+		if (res == -1)
+		{
+			SYSLOG_ERROR("epoll_ctl");
+			abort ();
+		}
+
+		event.events = EPOLLOUT | EPOLLET;
+		res = epoll_ctl (mEPFDW, EPOLL_CTL_ADD, ((Connection*)event.data.ptr)->getFD(), &event);
 		if (res == -1)
 		{
 			SYSLOG_ERROR("epoll_ctl");
@@ -191,7 +219,7 @@ void EpollServer::acceptAllConnection()
 	}
 }
 
-int EpollServer::init(const char *port)
+int EpollServer::init(int port)
 {
 	int sfd;
 	int res;
@@ -214,8 +242,15 @@ int EpollServer::init(const char *port)
 
 	mFD = sfd;
 
-	mEPFD = epoll_create1 (0);
-	if (mEPFD == -1)
+	mEPFDR = epoll_create1 (0);
+	if (mEPFDR == -1)
+	{
+		SYSLOG_ERROR("epoll_create");
+		abort ();
+	}
+
+	mEPFDW = epoll_create1 (0);
+	if (mEPFDW == -1)
 	{
 		SYSLOG_ERROR("epoll_create");
 		abort ();
@@ -223,7 +258,7 @@ int EpollServer::init(const char *port)
 
 	event.data.ptr = this;
 	event.events = EPOLLIN | EPOLLET;
-	res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, sfd, &event);
+	res = epoll_ctl (mEPFDR, EPOLL_CTL_ADD, sfd, &event);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("epoll_ctl");
@@ -264,17 +299,17 @@ void *EpollServer::runLoop()
 
 	while(1)
 	{
-		int n = epoll_wait(mEPFD, events, MAXEVENTS, -1);
+		syslog(LOG_INFO, "Begin read poll %x: %d:", (unsigned int)pthread_self(), mEPFDR);
+		int n = epoll_wait(mEPFDR, events, MAXEVENTS, -1);
 		for ( int i = 0; i < n; ++i) {
-			syslog(LOG_INFO, "%x: %d :%d: %d %d", (unsigned int)pthread_self(), i, ((Connection*)events[i].data.ptr)->getFD(),
+			syslog(LOG_INFO, "Read poll %x: %d :%d: %d %d", (unsigned int)pthread_self(), i, ((Connection*)events[i].data.ptr)->getFD(),
 					events[i].events & EPOLLIN, events[i].events & EPOLLOUT);
 		}
 		for (int i = 0; i < n; ++i)
 		{
 			if ((events[i].events & EPOLLERR) ||
 				(events[i].events & EPOLLHUP) ||
-				((!(events[i].events & EPOLLIN)) &&
-				!(events[i].events & EPOLLOUT)))
+				!(events[i].events & EPOLLIN))
 			{
 				if (this == events[i].data.ptr) {
 					syslog(LOG_INFO, "%s", "epoll error on listening fd\n");
@@ -285,17 +320,35 @@ void *EpollServer::runLoop()
 			} else if (this == events[i].data.ptr) {
 				acceptAllConnection();
 			} else {
-				assert((events[i].events & EPOLLOUT) || (events[i].events & EPOLLIN));
-				if (events[i].events & EPOLLOUT) {
-					((Connection*)events[i].data.ptr)->sendBufferedData();
-				}
-				if (events[i].events & EPOLLIN) {
-					((Connection*)events[i].data.ptr)->readData();
-				}
+				assert(events[i].events & EPOLLIN);
+				((Connection*)events[i].data.ptr)->readData();
+			}
+
+		}
+
+		syslog(LOG_INFO, "Begin write poll %x: %d:", (unsigned int)pthread_self(), mEPFDR);
+		n = epoll_wait(mEPFDW, events, MAXEVENTS, -1);
+		for ( int i = 0; i < n; ++i) {
+			syslog(LOG_INFO, "Write poll %x: %d :%d: %d %d", (unsigned int)pthread_self(), i, ((Connection*)events[i].data.ptr)->getFD(),
+					events[i].events & EPOLLIN, events[i].events & EPOLLOUT);
+		}
+		for (int i = 0; i < n; ++i)
+		{
+			assert(this != events[i].data.ptr);
+			if ((events[i].events & EPOLLERR) ||
+				(events[i].events & EPOLLHUP) ||
+				!(events[i].events & EPOLLOUT))
+			{
+				syslog(LOG_INFO, "%s", "epoll error on working fd\n");
+				((Connection*)events[i].data.ptr)->closeConnection();
+			} else {
+				assert(events[i].events & EPOLLOUT);
+				((Connection*)events[i].data.ptr)->sendBufferedData();
 			}
 
 		}
 	}
+
 	free(events);
 	return NULL;
 }
@@ -307,7 +360,7 @@ void *EpollServer::runLoop()
 
 	event.data.ptr = conn;
 	event.events = EPOLLOUT | EPOLLET | EPOLLIN;
-	res = epoll_ctl(mEPFD, EPOLL_CTL_MOD, conn->getFD(), &event);
+	res = epoll_ctl(mEPFDR, EPOLL_CTL_MOD, conn->getFD(), &event);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("epoll_ctl");
@@ -324,7 +377,7 @@ int EpollServer::stopSending(Connection *conn) //int fd, void *ptr)
 
 	event.data.ptr = conn;
 	event.events = EPOLLET | EPOLLIN;
-	res = epoll_ctl(mEPFD, EPOLL_CTL_MOD, conn->getFD(), &event);
+	res = epoll_ctl(mEPFDR, EPOLL_CTL_MOD, conn->getFD(), &event);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("epoll_ctl");

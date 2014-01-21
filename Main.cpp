@@ -10,7 +10,7 @@ int main(int argc, char *argv[])
 	openlog("game_server", 0, LOG_USER);
 	syslog(LOG_INFO, "server start");
 
-	gEpollServer.init("8888");
+	gEpollServer.init(8888);
 
 	gEpollServer.run(8);
 

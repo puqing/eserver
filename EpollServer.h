@@ -29,7 +29,8 @@ public:
 private:
 	EventHandler *mEventHandler;
 	int mFD;
-	int mEPFD;
+	int mEPFDR;
+	int mEPFDW;
 
 public:
 	void setEventHandler(EventHandler *event_handler)
@@ -38,7 +39,7 @@ public:
 	}
 
 	void acceptAllConnection();
-	int init(const char *port);
+	int init(int port);
 	int run(int thread_number);
 	int stop();
 	int pollSending(Connection *conn);
