@@ -31,10 +31,11 @@ EpollServer gEpollServer;
 
 static int create_and_bind (const char *port)
 {
-	struct addrinfo hints;
-	struct addrinfo *result, *rp;
+//	struct addrinfo hints;
+//	struct addrinfo *result, *rp;
 	int res, sfd;
 
+#if 0
 	memset(&hints, 0, sizeof (struct addrinfo));
 	hints.ai_family = AF_UNSPEC;     /* Return IPv4 and IPv6 choices */
 	hints.ai_socktype = SOCK_STREAM; /* We want a TCP socket */
@@ -72,6 +73,25 @@ static int create_and_bind (const char *port)
 	}
 
 	freeaddrinfo(result);
+#endif
+
+	struct sockaddr_in addr;
+
+	sfd = socket(AF_INET, SOCK_STREAM, 0);
+	if (sfd == -1) {
+		SYSLOG_ERROR("socket");
+		return -1;
+	}
+
+	memset(&addr, 0, sizeof addr);
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(8888);
+//	inet_pton(AF_INET, "10.0.2.15", &addr.sin_addr.s_addr);
+	res = bind(sfd, (struct sockaddr*)&addr, sizeof addr);
+	if (res == -1) {
+		SYSLOG_ERROR("bind");
+		return -1;
+	}
 
 	return sfd;
 }

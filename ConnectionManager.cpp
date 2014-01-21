@@ -4,6 +4,7 @@
 #include <syslog.h>
 #include <errno.h>
 #include <string.h>
+#include <pthread.h>
 
 #include "EpollServer.h"
 #include "ObjectQueue.h"
@@ -36,10 +37,10 @@ Connection *ConnectionManager::get(int fd)
 	Connection *conn = static_cast<Connection*>(mFreeConnections.pop());
 	assert(conn != NULL);
 //	conn->mFD = fd;
+	syslog(LOG_INFO, "[%x:%x:%d:] fd duplicating to :%d:", (unsigned int)this, (unsigned int)pthread_self(), fd, conn->mFD);
 	int res = dup2(fd, conn->mFD);
 	if (res == -1) {
 		SYSLOG_ERROR("dup2");
-		syslog(LOG_ERR, "fd: %d, new_fd: %d", fd, conn->mFD);
 		abort();
 	}
 
