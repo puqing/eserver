@@ -312,9 +312,9 @@ void *EpollServer::runLoop()
 				!(events[i].events & EPOLLIN))
 			{
 				if (this == events[i].data.ptr) {
-					syslog(LOG_INFO, "%s", "epoll error on listening fd\n");
+					syslog(LOG_INFO, "%s:%d: events = %x", "epoll error on listening fd", this->mFD, events[i].events);
 				} else {
-					syslog(LOG_INFO, "%s", "epoll error on working fd\n");
+					syslog(LOG_INFO, "%s:%d: events = %x", "epoll error on working fd", ((Connection*)events[i].data.ptr)->getFD(), events[i].events);
 					((Connection*)events[i].data.ptr)->closeConnection();
 				}
 			} else if (this == events[i].data.ptr) {
@@ -339,7 +339,7 @@ void *EpollServer::runLoop()
 				(events[i].events & EPOLLHUP) ||
 				!(events[i].events & EPOLLOUT))
 			{
-				syslog(LOG_INFO, "%s", "epoll error on working fd\n");
+				syslog(LOG_INFO, "%s:%d: events = %x", "epoll error on working fd", ((Connection*)events[i].data.ptr)->getFD(), events[i].events);
 				((Connection*)events[i].data.ptr)->closeConnection();
 			} else {
 				assert(events[i].events & EPOLLOUT);
