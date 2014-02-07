@@ -107,14 +107,21 @@ char *Connection::processData(char *buf, size_t size)
 
 void Connection::processMessage(const char *msg, size_t len)
 {
-	char buf[1024];
+	char buf[10000];
+	char *p;
+	int i;
 
 	*(uint16_t*)buf = len+3+3;
-	memcpy(buf+sizeof(uint16_t), "^^^", 3);
-	memcpy(buf+sizeof(uint16_t)+3, msg, len);
-	memcpy(buf+sizeof(uint16_t)+3+len, "$$$", 3);
+	p = buf + sizeof(uint16_t);
 
-	sendData(buf, sizeof(uint16_t)+3+len+3);
+	p[0] = 0;
+	for (i=0; i<10; ++i) {
+		strcat(p, msg);
+	}
+
+	strcat(p, "$$$");
+
+	sendData(buf, sizeof(uint16_t)+strlen(p));
 
 //	syslog(LOG_INFO, "[%x:%x:%d:] %d bytes sent", (unsigned int)this, (unsigned int)pthread_self(), mFD, sizeof(uint16_t)+3+len+3);
 }
@@ -146,13 +153,16 @@ int Connection::sendData(const char *data, size_t num)
 
 	syslog(LOG_INFO, "[%x:%x:%d:] %d bytes put in write buffer",
 		(unsigned int)this, (unsigned int)pthread_self(), mFD, num);
-	sendBufferedData();
+	sendBufferedData(true);
 
 	return 0;
 
 }
 
-void Connection::sendBufferedData()
+/*
+ * direct_send: trun, called by sendData(); false, called by EpollServer
+ */
+void Connection::sendBufferedData(bool direct_send)
 {
 	int res = 0;
 	int total = 0;
@@ -161,6 +171,7 @@ void Connection::sendBufferedData()
 		pthread_mutex_lock(&mWriteBufferLock);
 
 		if (mWriteBuffer == mWriteBufferEnd) {
+			if(!direct_send) gEpollServer.rearmOut(this, false);
 			pthread_mutex_unlock(&mWriteBufferLock);
 			break;
 		}
@@ -169,12 +180,22 @@ void Connection::sendBufferedData()
 
 		assert(res != 0);
 
-		if (res == mWriteBufferEnd-mWriteBuffer) {
-			mWriteBufferEnd = mWriteBuffer;
+		if (res > 0) {
+			assert(res <= mWriteBufferEnd-mWriteBuffer);
+			syslog(LOG_INFO, "[%x:%x:%d:] %d bytes sent",
+				(unsigned int)this, (unsigned int)pthread_self(), mFD, res);
+
+			if (res < mWriteBufferEnd-mWriteBuffer) {
+				memcpy(mWriteBuffer, mWriteBuffer+res, mWriteBufferEnd-mWriteBuffer-res);
+			}
+			mWriteBufferEnd -= res;
 			pthread_mutex_unlock(&mWriteBufferLock);
 			total += res;
-			break;
-		} else if (res == -1) {
+		} else {
+			assert(res == -1);
+			if (errno == EAGAIN) {
+				if (direct_send) gEpollServer.rearmOut(this, true);
+			}
 			pthread_mutex_unlock(&mWriteBufferLock);
 			SYSLOG_ERROR("write");
 			if (errno != EAGAIN) {
@@ -182,19 +203,11 @@ void Connection::sendBufferedData()
 					(unsigned int)this, (unsigned int)pthread_self(), mFD);
 			}
 			break;
-		} else {
-			assert(res > 0 && res < mWriteBufferEnd-mWriteBuffer);
-			syslog(LOG_INFO, "[%x:%x:%d:]Less data than required sent (%d < %d)\n",
-				(unsigned int)this, (unsigned int)pthread_self(), mFD, res, mWriteBufferEnd-mWriteBuffer);
-
-			memcpy(mWriteBuffer, mWriteBuffer+res, mWriteBufferEnd-mWriteBuffer-res);
-			mWriteBufferEnd -= res;
-			pthread_mutex_unlock(&mWriteBufferLock);
-			total += res;
 		}
 	}
 
-	syslog(LOG_INFO, "[%x:%x:%d:] %d bytes sent",
+	syslog(LOG_INFO, "[%x:%x:%d:] total %d bytes sent",
 		(unsigned int)this, (unsigned int)pthread_self(), mFD, total);
+
 }
 

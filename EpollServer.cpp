@@ -202,20 +202,20 @@ void EpollServer::acceptAllConnection()
 
 		event.data.ptr = (Connection*)gConnectionManager.get(infd);
 		event.events = EPOLLIN | EPOLLET;
-		res = epoll_ctl (mEPFDR, EPOLL_CTL_ADD, ((Connection*)event.data.ptr)->getFD(), &event);
+		res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, ((Connection*)event.data.ptr)->getFD(), &event);
 		if (res == -1)
 		{
 			SYSLOG_ERROR("epoll_ctl");
 			abort ();
 		}
 
-		event.events = EPOLLOUT | EPOLLET;
+/*		event.events = EPOLLOUT | EPOLLET;
 		res = epoll_ctl (mEPFDW, EPOLL_CTL_ADD, ((Connection*)event.data.ptr)->getFD(), &event);
 		if (res == -1)
 		{
 			SYSLOG_ERROR("epoll_ctl");
 			abort ();
-		}
+		}*/
 	}
 }
 
@@ -242,23 +242,23 @@ int EpollServer::init(int port)
 
 	mFD = sfd;
 
-	mEPFDR = epoll_create1 (0);
-	if (mEPFDR == -1)
+	mEPFD = epoll_create1 (0);
+	if (mEPFD == -1)
 	{
 		SYSLOG_ERROR("epoll_create");
 		abort ();
 	}
 
-	mEPFDW = epoll_create1 (0);
+/*	mEPFDW = epoll_create1 (0);
 	if (mEPFDW == -1)
 	{
 		SYSLOG_ERROR("epoll_create");
 		abort ();
-	}
+	}*/
 
 	event.data.ptr = this;
 	event.events = EPOLLIN | EPOLLET;
-	res = epoll_ctl (mEPFDR, EPOLL_CTL_ADD, sfd, &event);
+	res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, sfd, &event);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("epoll_ctl");
@@ -299,8 +299,8 @@ void *EpollServer::runLoop()
 
 	while(1)
 	{
-		syslog(LOG_INFO, "Begin read poll %x: %d:", (unsigned int)pthread_self(), mEPFDR);
-		int n = epoll_wait(mEPFDR, events, MAXEVENTS, -1);
+		syslog(LOG_INFO, "Begin read poll %x: %d:", (unsigned int)pthread_self(), mEPFD);
+		int n = epoll_wait(mEPFD, events, MAXEVENTS, -1);
 		for ( int i = 0; i < n; ++i) {
 			syslog(LOG_INFO, "Read poll %x: %d :%d: %d %d", (unsigned int)pthread_self(), i, ((Connection*)events[i].data.ptr)->getFD(),
 					events[i].events & EPOLLIN, events[i].events & EPOLLOUT);
@@ -309,7 +309,7 @@ void *EpollServer::runLoop()
 		{
 			if ((events[i].events & EPOLLERR) ||
 				(events[i].events & EPOLLHUP) ||
-				!(events[i].events & EPOLLIN))
+				!((events[i].events & EPOLLIN) || (events[i].events & EPOLLOUT)))
 			{
 				if (this == events[i].data.ptr) {
 					syslog(LOG_INFO, "%s:%d: events = %x", "epoll error on listening fd", this->mFD, events[i].events);
@@ -319,14 +319,16 @@ void *EpollServer::runLoop()
 				}
 			} else if (this == events[i].data.ptr) {
 				acceptAllConnection();
-			} else {
-				assert(events[i].events & EPOLLIN);
+			} else if (events[i].events & EPOLLIN) {
 				((Connection*)events[i].data.ptr)->readData();
+			} else {
+				assert(events[i].events & EPOLLOUT);
+				((Connection*)events[i].data.ptr)->sendBufferedData(false);
 			}
 
 		}
 
-		syslog(LOG_INFO, "Begin write poll %x: %d:", (unsigned int)pthread_self(), mEPFDR);
+/*		syslog(LOG_INFO, "Begin write poll %x: %d:", (unsigned int)pthread_self(), mEPFDR);
 		n = epoll_wait(mEPFDW, events, MAXEVENTS, -1);
 		for ( int i = 0; i < n; ++i) {
 			syslog(LOG_INFO, "Write poll %x: %d :%d: %d %d", (unsigned int)pthread_self(), i, ((Connection*)events[i].data.ptr)->getFD(),
@@ -346,21 +348,22 @@ void *EpollServer::runLoop()
 				((Connection*)events[i].data.ptr)->sendBufferedData();
 			}
 
-		}
+		}*/
 	}
 
 	free(events);
 	return NULL;
 }
 
-/*int EpollServer::pollSending(Connection *conn) //int fd, void *ptr)
+int EpollServer::rearmOut(Connection *conn, bool rearm) //int fd, void *ptr)
 {
 	struct epoll_event event;
 	int res;
 
+	syslog(LOG_INFO, "[%x:%x:%d:] Rearm out %d", (unsigned int)conn, (unsigned int)pthread_self(), conn->getFD(), rearm);
 	event.data.ptr = conn;
-	event.events = EPOLLOUT | EPOLLET | EPOLLIN;
-	res = epoll_ctl(mEPFDR, EPOLL_CTL_MOD, conn->getFD(), &event);
+	event.events = EPOLLET | EPOLLIN | (rearm?EPOLLOUT:0);
+	res = epoll_ctl(mEPFD, EPOLL_CTL_MOD, conn->getFD(), &event);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("epoll_ctl");
@@ -369,21 +372,4 @@ void *EpollServer::runLoop()
 		return 0;
 	}
 }
-
-int EpollServer::stopSending(Connection *conn) //int fd, void *ptr)
-{
-	struct epoll_event event;
-	int res;
-
-	event.data.ptr = conn;
-	event.events = EPOLLET | EPOLLIN;
-	res = epoll_ctl(mEPFDR, EPOLL_CTL_MOD, conn->getFD(), &event);
-	if (res == -1)
-	{
-		SYSLOG_ERROR("epoll_ctl");
-		return -1;
-	} else {
-		return 0;
-	}
-}*/
 

@@ -29,8 +29,8 @@ public:
 private:
 	EventHandler *mEventHandler;
 	int mFD;
-	int mEPFDR;
-	int mEPFDW;
+	int mEPFD;
+//	int mEPFDW;
 
 public:
 	void setEventHandler(EventHandler *event_handler)
@@ -42,8 +42,7 @@ public:
 	int init(int port);
 	int run(int thread_number);
 	int stop();
-	int pollSending(Connection *conn);
-	int stopSending(Connection *conn);
+	int rearmOut(Connection *conn, bool poll);
 
 	virtual void *runLoop();
 

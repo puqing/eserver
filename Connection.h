@@ -13,9 +13,9 @@ public:
 	void readData();
 	char *processData(char *buf, size_t size);
 	virtual void processMessage(const char *msg, size_t len);
-	void closeConnection();
+	virtual void closeConnection();
 	int sendData(const char *data, size_t num);
-	void sendBufferedData();
+	void sendBufferedData(bool direct_send);
 	int getFD() { return mFD; }
 
 	friend class ConnectionManager;
