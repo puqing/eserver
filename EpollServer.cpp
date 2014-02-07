@@ -314,6 +314,7 @@ void *EpollServer::runLoop()
 				if (this == events[i].data.ptr) {
 					syslog(LOG_INFO, "%s:%d: events = %x", "epoll error on listening fd", this->mFD, events[i].events);
 				} else {
+					perror("epoll_wait");
 					syslog(LOG_INFO, "%s:%d: events = %x", "epoll error on working fd", ((Connection*)events[i].data.ptr)->getFD(), events[i].events);
 					((Connection*)events[i].data.ptr)->closeConnection();
 				}

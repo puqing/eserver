@@ -111,30 +111,41 @@ void Connection::processMessage(const char *msg, size_t len)
 	char *p;
 	int i;
 
-	*(uint16_t*)buf = len+3+3;
+	*(uint16_t*)buf = 30*len+3+3;
 	p = buf + sizeof(uint16_t);
 
 	p[0] = 0;
-	for (i=0; i<10; ++i) {
-		strcat(p, msg);
+	strcpy(p, "^^^");
+	p += 3;
+	for (i=0; i<30; ++i) {
+		memcpy(p, msg, len);
+		p += len;
 	}
 
-	strcat(p, "$$$");
+	strcpy(p, "$$$");
+	p += 3;
 
-	sendData(buf, sizeof(uint16_t)+strlen(p));
+	sendData(buf, p-buf);
 
 //	syslog(LOG_INFO, "[%x:%x:%d:] %d bytes sent", (unsigned int)this, (unsigned int)pthread_self(), mFD, sizeof(uint16_t)+3+len+3);
 }
 
 extern ConnectionManager gConnectionManager;
 
+/*
+ * Note: mReading is intentionally untouched in this function
+ * for other threads.
+ */
 void Connection::closeConnection()
 {
 	close(mFD);
 	syslog(LOG_INFO, "[%x:%x:%d:] fd closed",
 		(unsigned int)this, (unsigned int)pthread_self(), mFD);
-	assert(mReading != 0);
-	assert(mWriteBufferEnd == mWriteBuffer);
+//	assert(mReading != 0);
+//	assert(mWriteBufferEnd == mWriteBuffer);
+	pthread_mutex_lock(&mWriteBufferLock);
+	mWriteBufferEnd = mWriteBuffer;
+	pthread_mutex_unlock(&mWriteBufferLock);
 	gConnectionManager.recycle(this);
 }
 

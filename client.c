@@ -9,6 +9,28 @@
 #include <errno.h>
 #include <arpa/inet.h>
 
+static int shrink_socket_send_buffer(int sfd)
+{
+	int size;
+	int res;
+
+	size = 20;
+
+	res = setsockopt(sfd, SOL_SOCKET, SO_SNDBUF, &size, sizeof size);
+	if (res == -1) {
+		perror("setsockopt");
+		return -1;
+	}
+
+	res = setsockopt(sfd, SOL_SOCKET, SO_RCVBUF, &size, sizeof size);
+	if (res == -1) {
+		perror("setsockopt");
+		return -1;
+	}
+
+	return 0;
+}
+
 static int connect_server(char *server, char *port)
 {
 //	struct addrinfo hints;
@@ -67,6 +89,8 @@ static int connect_server(char *server, char *port)
 		perror("connect");
 		return -1;
 	}
+	
+	shrink_socket_send_buffer(sfd);
 
 	return sfd;
 	
@@ -149,7 +173,7 @@ void print_local_port(int fd)
 void *doit(void *str)
 {
 	int sfd, count;
-	char buf[1024];
+	char buf[10240];
 
 	while (1) {
 		sfd = connect_server("192.168.56.1", "8888");
