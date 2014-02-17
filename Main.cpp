@@ -9,7 +9,7 @@ extern EpollServer gEpollServer;
 int main(int argc, char *argv[])
 {
 
-//	daemon(0, 0);
+	daemon(0, 0);
 
 	signal(SIGPIPE, SIG_IGN);
 
@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
 
 	syslog(LOG_INFO, "server start");
 
-	gEpollServer.init(8888);
+	gEpollServer.init(80);
 
 	gEpollServer.run(8);
 

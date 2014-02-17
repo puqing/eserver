@@ -12,6 +12,8 @@
 
 #define PERROR(s) printf("%s:%d: %s: %s\n", __FILE__, __LINE__, s, strerror(errno))
 
+char *ip_addr = 0;
+
 static int shrink_socket_send_buffer(int sfd)
 {
 	int size;
@@ -41,11 +43,21 @@ static int connect_server(const char *server, int port)
 	int sfd;
 	struct sockaddr_in addr;
 	int res;
+	int on = 1;
 
 	sfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (sfd == -1) {
 		perror("socket");
 		return -1;
+	}
+
+	res = setsockopt(sfd, SOL_SOCKET,
+			SO_REUSEADDR,
+			(const char *) &on, sizeof(on));
+
+	if (-1 == res)
+	{
+		perror("setsockopt(...,SO_REUSEADDR,...)");
 	}
 
 	addr.sin_family = AF_INET;
@@ -146,10 +158,10 @@ void *doit(void *str)
 	char buf[10240];
 
 	while (1) {
-		sfd = connect_server("127.0.0.1", 8888);
+		sfd = connect_server(ip_addr, 80);
 		if (sfd == -1) {
 			printf("Will connect again.\n");
-			sleep(30);
+			sleep(rand()*1.0/RAND_MAX*30);
 			continue;
 		}
 
@@ -190,13 +202,15 @@ int main(int argc, char *argv[])
 
 	pthread_t tid[THREADNUM];
 
-	if (argc != 2) {
-		fprintf(stderr, "Usage: %s message\n", argv[0]);
+	if (argc != 3) {
+		fprintf(stderr, "Usage: %s ip_addr message\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
 
+	ip_addr = argv[1];
+
 	for (i = 0; i < THREADNUM; ++i) {
-		pthread_create(&tid[i], NULL, &doit, argv[1]);
+		pthread_create(&tid[i], NULL, &doit, argv[2]);
 	}
 
 	for (i = 0; i < THREADNUM; ++i) {

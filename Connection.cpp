@@ -33,21 +33,14 @@ Connection::Connection()
 
 void Connection::readData()
 {
+	__sync_bool_compare_and_swap(&mReading, 0, pthread_self());
 
-	pthread_mutex_lock(&mReadLock);
-	if (mReading) {
-		pthread_mutex_unlock(&mReadLock);
-		syslog(LOG_INFO, "[%x:%x:%d:] fd is being read by another thread %x", (unsigned int)this, (unsigned int)pthread_self(), mFD, mReading);
+	if (mReading != pthread_self()) {
 		return;
 	}
 
-	mReading = pthread_self();;
-	pthread_mutex_unlock(&mReadLock);
-
-	while (1)
-	{
-		ssize_t count;
-
+	ssize_t count;
+	do {
 		pthread_mutex_lock(&mReadLock);
 		count = read(mFD, mReadBufferEnd, READ_BUFFER_SIZE-(mReadBufferEnd-mReadBuffer));
 		syslog(LOG_INFO, "[%x:%x:%d:] %d bytes read", (unsigned int)this, (unsigned int)pthread_self(), mFD, count);
@@ -63,7 +56,6 @@ void Connection::readData()
 				memcpy(mReadBuffer, p, mReadBufferEnd - p);
 				mReadBufferEnd -= p-mReadBuffer;
 			}
-			continue;
 		} else if (count == 0) {
 			/* The remote has closed the connection. */
 			syslog(LOG_INFO, "[%x:%x:%d:] Remote closed\n",
@@ -81,8 +73,7 @@ void Connection::readData()
 					(unsigned int)this, (unsigned int)pthread_self(), mFD);
 			}
 		}
-		break;
-	}
+	} while (count >0);
 }
 
 char *Connection::processData(char *buf, size_t size)
@@ -133,8 +124,7 @@ void Connection::processMessage(const char *msg, size_t len)
 extern ConnectionManager gConnectionManager;
 
 /*
- * Note: mReading is intentionally untouched in this function
- * for other threads.
+ * Note: mReading is intentionally untouched in this function.
  */
 void Connection::closeConnection()
 {
@@ -178,7 +168,7 @@ void Connection::sendBufferedData(bool direct_send)
 	int res = 0;
 	int total = 0;
 
-	while (1) {
+	do {
 		pthread_mutex_lock(&mWriteBufferLock);
 
 		if (mWriteBuffer == mWriteBufferEnd) {
@@ -213,9 +203,8 @@ void Connection::sendBufferedData(bool direct_send)
 				syslog(LOG_ERR, "[%x:%x:%d:] Error other than EAGAIN encountered\n",
 					(unsigned int)this, (unsigned int)pthread_self(), mFD);
 			}
-			break;
 		}
-	}
+	} while (res > 0);
 
 	syslog(LOG_INFO, "[%x:%x:%d:] total %d bytes sent",
 		(unsigned int)this, (unsigned int)pthread_self(), mFD, total);
