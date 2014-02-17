@@ -1,8 +1,8 @@
 EXE=server client
-CFLAGS=`mysql_config --cflags` -pthread
-LDFLAGS=`mysql_config --libs_r` -pthread
+CFLAGS=-pthread
+LDFLAGS=-pthread
 
-server: EpollServer.o Connection.o DBConnection.o ObjectQueue.o ConnectionManager.o Main.o
+server: EpollServer.o Connection.o ObjectQueue.o ConnectionManager.o Main.o
 	g++ $^ -o $@ $(LDFLAGS)
 
 client: client.o
