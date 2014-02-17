@@ -8,6 +8,9 @@
 #include <unistd.h>
 #include <errno.h>
 #include <arpa/inet.h>
+#include <signal.h>
+
+#define PERROR(s) printf("%s:%d: %s: %s\n", __FILE__, __LINE__, s, strerror(errno))
 
 static int shrink_socket_send_buffer(int sfd)
 {
@@ -31,7 +34,7 @@ static int shrink_socket_send_buffer(int sfd)
 	return 0;
 }
 
-static int connect_server(char *server, char *port)
+static int connect_server(const char *server, int port)
 {
 //	struct addrinfo hints;
 //	struct addrinfo *result, *rp;
@@ -42,51 +45,16 @@ static int connect_server(char *server, char *port)
 	sfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (sfd == -1) {
 		perror("socket");
-		abort();
-	}
-
-#if 0
-	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-
-	s = getaddrinfo(server, port, &hints, &result);
-	
-	if (s != 0) {
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
-		close(sfd);
 		return -1;
 	}
-
-	for (rp = result; rp != NULL; rp = rp->ai_next)
-	{
-		int cr = connect(sfd, rp->ai_addr, rp->ai_addrlen);
-		if (cr == 0) {
-			break;
-		} else if (cr == -1) {
-			perror("connect");
-			continue;
-		}
-	}
-	
-//	assert(rp == result);
-
-	freeaddrinfo(result);
-
-	if (rp == NULL) {
-		fprintf(stderr, "Could not connect\n");
-		close(sfd);
-		return -1;
-	}
-
-#endif
 
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(8888);
-	inet_pton(AF_INET, "10.0.2.15", &addr.sin_addr.s_addr);
+	addr.sin_port = htons(port);
+	inet_pton(AF_INET, server, &addr.sin_addr.s_addr);
 	res = connect(sfd, (struct sockaddr*)&addr, sizeof addr);
 	if (res < 0) {
 		perror("connect");
+		close(sfd);
 		return -1;
 	}
 	
@@ -101,14 +69,16 @@ int send_data(int fd, char *data)
 	int sr;
 	uint16_t len = (uint16_t)(rand()*1.0/RAND_MAX*strlen(data));
 
+	if (len == 0) len = 1;
+
 	sr = send(fd, &len, sizeof len, 0);
 	if (sr < 0) {
-		perror("send");
+		PERROR("send");
 	}
 
 	sr = send(fd, data, len, 0);
 	if (sr < 0) {
-		perror("send");
+		PERROR("send");
 	}
 
 	return sr;
@@ -176,20 +146,23 @@ void *doit(void *str)
 	char buf[10240];
 
 	while (1) {
-		sfd = connect_server("192.168.56.1", "8888");
+		sfd = connect_server("127.0.0.1", 8888);
 		if (sfd == -1) {
 			printf("Will connect again.\n");
 			sleep(30);
-			sfd = connect_server("192.168.56.1", "8888");
-			if (sfd == -1) {
-				printf("Still cannot connect\n");
-				break;
-			}
+			continue;
 		}
 
 		print_local_port(sfd);
 
 		count = send_data(sfd, (char*)str);
+		if (count < 0) {
+			printf("Send error\n");
+			close(sfd);
+			sleep(30);
+			continue;
+		}
+
 		printf("[%x:%d] %d bytes sent\n",
 				(unsigned int)pthread_self(),
 				sfd, count);
@@ -212,6 +185,8 @@ void *doit(void *str)
 int main(int argc, char *argv[])
 {
 	int i;
+
+	signal(SIGPIPE, SIG_IGN);
 
 	pthread_t tid[THREADNUM];
 
