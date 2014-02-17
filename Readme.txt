@@ -4,7 +4,7 @@ epoll_wait(2). In this model, the number of threads should be set the same as or
 
 Here are some issues I encountered and some considerations during the implementation of the server.
 
-1. EPOLLET is not really edge-triggered, in multi-threading environment
+1. EPOLLET is not really edge-triggered, in multi-thread environment
 
 While a thread has not finished reading the buffer of an fd, which has EPOLLET flag set, another thread could still get an EPOLLIN event on the fd from its own epoll_wait(2).
 
@@ -29,3 +29,10 @@ In some critical conditions, one thread closed an fd, another thread then accept
 So, we need to avoid immediately re-using fd numbers. But the behaviour of accept(2) is that it always returns the lowest usable number, so re-using a just closed fd number is very possible.
 
 In this code, a connection pool is used to avoid allocating memeory for each new connection. The connection poll was implemented as a queue. Each connection object has a constant fd number, mFD. When a connection is accept(2)ed, the returned fd will be dup2(2)ed to the connection's mFD member, and itself will be closed immediately. It is the mFD that will be added to epoll. By this means, fd number is never immediately re-used.
+
+5.  Number of opened files:
+In /etc/security/limits.conf:
+
+username	hard	nofile	20000
+username	soft	nofile	20000
+

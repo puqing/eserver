@@ -2,6 +2,8 @@ EXE=server client
 CFLAGS=-pthread
 LDFLAGS=-pthread
 
+all: $(EXE)
+
 server: EpollServer.o Connection.o ObjectQueue.o ConnectionManager.o Main.o
 	g++ $^ -o $@ $(LDFLAGS)
 
