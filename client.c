@@ -12,7 +12,9 @@
 
 #define PERROR(s) printf("%s:%d: %s: %s\n", __FILE__, __LINE__, s, strerror(errno))
 
-char *ip_addr = 0;
+static char *ip_addr = 0;
+
+static int gStop = 0;
 
 static int shrink_socket_send_buffer(int sfd)
 {
@@ -157,8 +159,8 @@ void *doit(void *str)
 	int sfd, count;
 	char buf[10240];
 
-	while (1) {
-		sfd = connect_server(ip_addr, 80);
+	while (gStop == 0) {
+		sfd = connect_server(ip_addr, 8888);
 		if (sfd == -1) {
 			printf("Will connect again.\n");
 			sleep(rand()*1.0/RAND_MAX*30);
@@ -188,9 +190,17 @@ void *doit(void *str)
 
 	}
 
+	close(sfd);
+
 	printf("[%x] thread end\n", (unsigned int)pthread_self());
 	return NULL;
 }
+
+void signal_handler(int sig)
+{
+	gStop = 1;
+}
+
 
 #define THREADNUM 1015
 
@@ -199,6 +209,8 @@ int main(int argc, char *argv[])
 	int i;
 
 	signal(SIGPIPE, SIG_IGN);
+
+	signal(SIGINT, signal_handler);
 
 	pthread_t tid[THREADNUM];
 
@@ -210,12 +222,17 @@ int main(int argc, char *argv[])
 	ip_addr = argv[1];
 
 	for (i = 0; i < THREADNUM; ++i) {
-		pthread_create(&tid[i], NULL, &doit, argv[2]);
+		int res = pthread_create(&tid[i], NULL, &doit, argv[2]);
+		if (res != 0) {
+			printf("%d: %d\n", i, res);
+			return res;
+		}
 	}
 
 	for (i = 0; i < THREADNUM; ++i) {
 		pthread_join(tid[i], NULL);
 	}
+
 
 	return 0;
 }

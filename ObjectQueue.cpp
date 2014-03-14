@@ -1,43 +1,54 @@
 #include <stdlib.h>
 #include <pthread.h>
+#include <syslog.h>
 
 #include "ObjectQueue.h"
 
-ObjectQueue::ObjectQueue()
+ObjectQueue::ObjectQueue(size_t size) : mHead(0), mTail(0)
 {
-	tail = &head;
+	unsigned int cap = 1;
+	while (cap <= size)
+	{
+		cap <<= 1;
+	}
+	mItems = new ObjectQueueItem*[cap];
 
-	pthread_mutex_init(&head_mutex, NULL);
-	pthread_mutex_init(&tail_mutex, NULL);
+	mMask = cap - 1;
+
+	pthread_mutex_init(&mLock, NULL);
+}
+
+ObjectQueue::~ObjectQueue()
+{
+	delete [] mItems;
 }
 
 void ObjectQueue::push(ObjectQueueItem *obj)
 {
-	pthread_mutex_lock(&tail_mutex);
-	tail = tail->next = obj;
-	pthread_mutex_unlock(&tail_mutex);
+	pthread_mutex_lock(&mLock);
+	mItems[mTail & mMask]= obj;
+	++mTail;
+	pthread_mutex_unlock(&mLock);
 }
 
 ObjectQueueItem *ObjectQueue::pop()
 {
-	ObjectQueueItem *obj;
-	pthread_mutex_lock(&head_mutex);
-	obj = head.next;
-	if (obj != NULL) {
-		pthread_mutex_lock(&tail_mutex);
-		if (tail == obj) {
-			tail = &head;
-			head.next = NULL;
-			pthread_mutex_unlock(&tail_mutex);
-			pthread_mutex_unlock(&head_mutex);
-		} else {
-			pthread_mutex_unlock(&tail_mutex);
-			head.next = obj->next;
-			pthread_mutex_unlock(&head_mutex);
-			obj->next = NULL;
-		}
+	ObjectQueueItem *res;
+
+	pthread_mutex_lock(&mLock);
+	if (mHead == mTail) {
+		res = NULL;
 	} else {
-		pthread_mutex_unlock(&head_mutex);
+		res = mItems[mHead & mMask];
+		++mHead;
 	}
-	return obj;
+	pthread_mutex_unlock(&mLock);
+
+	return res;
 }
+
+size_t ObjectQueue::getNumber() const
+{
+	return mTail - mHead;
+}
+

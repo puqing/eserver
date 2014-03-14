@@ -15,10 +15,8 @@
 
 #define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
 
-#define WRITE_BUFFER_SIZE (64*1024)
+#define WRITE_BUFFER_SIZE (5*1024)
 #define READ_BUFFER_SIZE (1024)
-
-extern EpollServer gEpollServer;
 
 Connection::Connection()
 {
@@ -27,17 +25,19 @@ Connection::Connection()
 	mWriteBufferEnd = mWriteBuffer = (char*)malloc(WRITE_BUFFER_SIZE);
 	mReadBufferEnd = mReadBuffer = (char*)malloc(WRITE_BUFFER_SIZE);
 	pthread_mutex_init(&mReadLock, NULL);
-//	pthread_mutex_init(&mWriteLock, NULL);
 	pthread_mutex_init(&mWriteBufferLock, NULL);
 }
 
 void Connection::readData()
 {
-	__sync_bool_compare_and_swap(&mReading, 0, pthread_self());
-
-	if (mReading != pthread_self()) {
+	pthread_mutex_lock(&mReadLock);
+	if (mReading != 0) {
+		pthread_mutex_unlock(&mReadLock);
 		return;
 	}
+
+	mReading = pthread_self();
+	pthread_mutex_unlock(&mReadLock);
 
 	ssize_t count;
 	do {
@@ -57,10 +57,8 @@ void Connection::readData()
 				mReadBufferEnd -= p-mReadBuffer;
 			}
 		} else if (count == 0) {
-			/* The remote has closed the connection. */
 			syslog(LOG_INFO, "[%x:%x:%d:] Remote closed\n",
 				(unsigned int)this, (unsigned int)pthread_self(), mFD);
-//			mReading = 0;
 			closeConnection();
 			pthread_mutex_unlock(&mReadLock);
 		} else {
@@ -68,9 +66,13 @@ void Connection::readData()
 			mReading = 0;
 			pthread_mutex_unlock(&mReadLock);
 			SYSLOG_ERROR("read");
-			if (errno != EAGAIN) {
-				syslog(LOG_ERR, "[%x:%x:%d:] Error other than EAGAIN encountered\n",
+			if (errno == EBADF) {
+				syslog(LOG_ERR, "[%x:%x:%d:] Reading a closed fd\n",
 					(unsigned int)this, (unsigned int)pthread_self(), mFD);
+			} else if (errno != EAGAIN && errno != EWOULDBLOCK) {
+				syslog(LOG_ERR, "[%x:%x:%d:] read: %s\n",
+						(unsigned int)this, (unsigned int)pthread_self(), mFD,
+						strerror(errno));
 			}
 		}
 	} while (count >0);
@@ -93,7 +95,6 @@ char *Connection::processData(char *buf, size_t size)
 	}
 
 	return buf;
-//	sendData(buf, size);
 }
 
 void Connection::processMessage(const char *msg, size_t len)
@@ -117,25 +118,23 @@ void Connection::processMessage(const char *msg, size_t len)
 	p += 3;
 
 	sendData(buf, p-buf);
-
-//	syslog(LOG_INFO, "[%x:%x:%d:] %d bytes sent", (unsigned int)this, (unsigned int)pthread_self(), mFD, sizeof(uint16_t)+3+len+3);
 }
-
-extern ConnectionManager gConnectionManager;
 
 /*
  * Note: mReading is intentionally untouched in this function.
  */
 void Connection::closeConnection()
 {
-	close(mFD);
+	if (close(mFD) == -1) {
+		syslog(LOG_INFO, "[%x:%x:%d:] close: %s",
+			(unsigned int)this, (unsigned int)pthread_self(), mFD, strerror(errno));
+		return;
+	}
+
 	syslog(LOG_INFO, "[%x:%x:%d:] fd closed",
 		(unsigned int)this, (unsigned int)pthread_self(), mFD);
 //	assert(mReading != 0);
 //	assert(mWriteBufferEnd == mWriteBuffer);
-	pthread_mutex_lock(&mWriteBufferLock);
-	mWriteBufferEnd = mWriteBuffer;
-	pthread_mutex_unlock(&mWriteBufferLock);
 	gConnectionManager.recycle(this);
 }
 
@@ -161,7 +160,7 @@ int Connection::sendData(const char *data, size_t num)
 }
 
 /*
- * direct_send: trun, called by sendData(); false, called by EpollServer
+ * direct_send: true, called by sendData(); false, called by EpollServer
  */
 void Connection::sendBufferedData(bool direct_send)
 {
@@ -194,12 +193,12 @@ void Connection::sendBufferedData(bool direct_send)
 			total += res;
 		} else {
 			assert(res == -1);
-			if (errno == EAGAIN) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				if (direct_send) gEpollServer.rearmOut(this, true);
 			}
 			pthread_mutex_unlock(&mWriteBufferLock);
 			SYSLOG_ERROR("write");
-			if (errno != EAGAIN) {
+			if (errno != EAGAIN && errno != EWOULDBLOCK) {
 				syslog(LOG_ERR, "[%x:%x:%d:] Error other than EAGAIN encountered\n",
 					(unsigned int)this, (unsigned int)pthread_self(), mFD);
 			}

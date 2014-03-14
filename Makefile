@@ -1,5 +1,5 @@
 EXE=server client
-CFLAGS=-pthread
+CFLAGS=-pthread -g -Wall
 LDFLAGS=-pthread -static
 
 all: $(EXE)
@@ -11,10 +11,10 @@ client: client.o
 	gcc $^ -o $@ $(LDFLAGS)
 
 .cpp.o:
-	g++ -c $< -o $@ -Wall $(CFLAGS)
+	g++ -c $< -o $@ $(CFLAGS)
 
 .c.o:
-	gcc -c $< -o $@ -Wall -pthread
+	gcc -c $< -o $@ $(CFLAGS)
 
 clean:
 	rm -f *.o $(EXE)

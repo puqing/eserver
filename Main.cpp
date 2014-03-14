@@ -1,13 +1,25 @@
 #include <syslog.h>
 #include <unistd.h>
 #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
 
+#include "ObjectQueue.h"
+#include "Connection.h"
+#include "ConnectionManager.h"
 #include "EpollServer.h"
-
-extern EpollServer gEpollServer;
 
 int main(int argc, char *argv[])
 {
+
+	int port = 0;
+
+	if (argc != 2) {
+		fprintf(stderr, "Usage: %s port\n", argv[0]);
+		abort();
+	}
+
+	sscanf(argv[1], "%d", &port);
 
 	daemon(0, 0);
 
@@ -17,9 +29,14 @@ int main(int argc, char *argv[])
 
 	syslog(LOG_INFO, "server start");
 
-	gEpollServer.init(80);
+	gEpollServer.init(port);
 
-	gEpollServer.run(8);
+	gEpollServer.start(8);
+
+	while (1) {
+		syslog(LOG_INFO, "Concurrent connection number = %d\n", gConnectionManager.getNumber());
+		sleep(1);
+	}
 
 	gEpollServer.stop();
 

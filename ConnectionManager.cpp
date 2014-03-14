@@ -17,10 +17,10 @@
 
 ConnectionManager gConnectionManager(1024);
 
-ConnectionManager::ConnectionManager(size_t size)
+ConnectionManager::ConnectionManager(size_t max_num): mFreeConnections(max_num), mMaximumConnectionNumber(max_num)
 {
-	mAllConnections = new Connection[size];
-	for (unsigned int i = 0; i < size; ++i)
+	mAllConnections = new Connection[max_num];
+	for (unsigned int i = 0; i < max_num; ++i)
 	{
 		mAllConnections[i].mFD = FD_BASE + i;
 		mFreeConnections.push(&mAllConnections[i]);
@@ -35,9 +35,10 @@ ConnectionManager::~ConnectionManager()
 Connection *ConnectionManager::get(int fd)
 {
 	Connection *conn = static_cast<Connection*>(mFreeConnections.pop());
+
 	assert(conn != NULL);
-//	conn->mFD = fd;
-	syslog(LOG_INFO, "[%x:%x:%d:] fd duplicating to :%d:", (unsigned int)this, (unsigned int)pthread_self(), fd, conn->mFD);
+//	syslog(LOG_INFO, "[%x:%x:%d:] fd duplicating to :%d:, total connections %d",
+//		(unsigned int)conn, (unsigned int)pthread_self(), fd, conn->mFD, getNumber());
 	int res = dup2(fd, conn->mFD);
 	if (res == -1) {
 		SYSLOG_ERROR("dup2");
@@ -47,12 +48,20 @@ Connection *ConnectionManager::get(int fd)
 	close(fd);
 
 	conn->mReading = 0;
+	conn->mWriteBufferEnd = conn->mWriteBuffer;
 
 	return conn;
 }
 
 void ConnectionManager::recycle(Connection *conn)
 {
+//	syslog(LOG_INFO, "[%x:%x:%d:] connection recycling, total connections %d",
+//		(unsigned int)conn, (unsigned int)pthread_self(), conn->mFD, getNumber());
 	mFreeConnections.push(conn);
+}
+
+size_t ConnectionManager::getNumber() const
+{
+	return mMaximumConnectionNumber - mFreeConnections.getNumber();
 }
 
