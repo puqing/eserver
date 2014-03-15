@@ -8,6 +8,7 @@
 #include "Connection.h"
 #include "ConnectionManager.h"
 #include "EpollServer.h"
+#include "Worker.h"
 
 int main(int argc, char *argv[])
 {
@@ -31,7 +32,7 @@ int main(int argc, char *argv[])
 
 	gEpollServer.init(port);
 
-	gEpollServer.start(8);
+	Worker::start(&gEpollServer, 8);
 
 	while (1) {
 		syslog(LOG_INFO, "Concurrent connection number = %d\n", gConnectionManager.getNumber());

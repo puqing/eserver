@@ -1,16 +1,6 @@
-class EventLoop
-{
-protected:
-	virtual void *run() = 0;
-	static void *staticRun(void *data) {
-		return ((EventLoop*)data)->run();
-	}
-	virtual ~EventLoop() { }
-};
-
 class Connection;
 
-class EpollServer : EventLoop
+class EpollServer
 {
 
 public:
@@ -20,6 +10,8 @@ public:
 
 private:
 	EventHandler *mEventHandler;
+
+public:
 	int mFD;
 	int mEPFD;
 
@@ -31,13 +23,13 @@ public:
 
 	void acceptAllConnection();
 	int init(int port);
-	int start(int thread_number);
+//	int start(int thread_number);
 	int stop();
 	int rearmOut(Connection *conn, bool poll);
 
-	virtual void *run();
+//	virtual void *run();
 
-	virtual ~EpollServer() {};
+//	virtual ~EpollServer() {};
 };
 
 extern EpollServer gEpollServer;

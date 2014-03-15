@@ -4,7 +4,8 @@ LDFLAGS=-pthread -static
 
 all: $(EXE)
 
-server: EpollServer.o Connection.o ObjectQueue.o ConnectionManager.o Main.o
+server: EpollServer.o Connection.o ObjectQueue.o ConnectionManager.o \
+	Main.o Worker.o
 	g++ $^ -o $@ $(LDFLAGS)
 
 client: client.o

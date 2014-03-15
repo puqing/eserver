@@ -121,8 +121,6 @@ static int accept_connection(int sfd)
 	return infd;
 }
 
-#define MAXEVENTS 64
-
 void EpollServer::acceptAllConnection()
 {
 	struct epoll_event event;
@@ -199,66 +197,9 @@ int EpollServer::init(int port)
 	return 0;
 }
 
-int EpollServer::start(int thread_number)
-{
-	pthread_t *tid;
-
-	tid = (pthread_t*)malloc(thread_number * sizeof(*tid));
-
-	for (int i = 0; i < thread_number; ++i) {
-		pthread_create(&tid[i], NULL, &staticRun, (EventLoop*)this);
-		syslog(LOG_INFO, "thread %x created\n", (unsigned int)tid[i]);
-	}
-
-	return 0;
-}
-
 int EpollServer::stop()
 {
 	return 0;
-}
-
-void *EpollServer::run()
-{
-	struct epoll_event *events;
-
-	events = (struct epoll_event*)calloc(MAXEVENTS, sizeof *events);
-
-	while(1)
-	{
-		syslog(LOG_INFO, "Begin read poll %x: %d:", (unsigned int)pthread_self(), mEPFD);
-		int n = epoll_wait(mEPFD, events, MAXEVENTS, -1);
-		for ( int i = 0; i < n; ++i) {
-			syslog(LOG_INFO, "Read poll %x: %d :%d: %d %d", (unsigned int)pthread_self(), i,
-			(events[i].data.ptr==this)?mFD:((Connection*)events[i].data.ptr)->getFD(),
-					events[i].events & EPOLLIN, events[i].events & EPOLLOUT);
-		}
-		for (int i = 0; i < n; ++i)
-		{
-			if ((events[i].events & EPOLLERR) ||
-				(events[i].events & EPOLLHUP) ||
-				!((events[i].events & EPOLLIN) || (events[i].events & EPOLLOUT)))
-			{
-				if (this == events[i].data.ptr) {
-					syslog(LOG_INFO, "%s:%d: events = %x", "epoll error on listening fd", this->mFD, events[i].events);
-				} else {
-					syslog(LOG_INFO, "%s:%d: events = %x", "epoll error on working fd", ((Connection*)events[i].data.ptr)->getFD(), events[i].events);
-					((Connection*)events[i].data.ptr)->closeConnection();
-				}
-			} else if (this == events[i].data.ptr) {
-				acceptAllConnection();
-			} else if (events[i].events & EPOLLIN) {
-				((Connection*)events[i].data.ptr)->readData();
-			} else {
-				assert(events[i].events & EPOLLOUT);
-				((Connection*)events[i].data.ptr)->sendBufferedData(false);
-			}
-
-		}
-	}
-
-	free(events);
-	return NULL;
 }
 
 int EpollServer::rearmOut(Connection *conn, bool rearm)
