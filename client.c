@@ -62,6 +62,18 @@ static int connect_server(const char *server, int port)
 		perror("setsockopt(...,SO_REUSEADDR,...)");
 	}
 
+	struct linger v_linger;
+	v_linger.l_onoff = 1;
+	v_linger.l_linger = 0;
+	res = setsockopt(sfd, SOL_SOCKET,
+			SO_LINGER,
+			(const char *) &v_linger, sizeof(v_linger));
+
+	if (-1 == res)
+	{
+		perror("setsockopt(...,SO_LINGER,...)");
+	}
+
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(port);
 	inet_pton(AF_INET, server, &addr.sin_addr.s_addr);
@@ -163,7 +175,8 @@ void *doit(void *str)
 		sfd = connect_server(ip_addr, 8888);
 		if (sfd == -1) {
 			printf("Will connect again.\n");
-			sleep(rand()*1.0/RAND_MAX*30);
+//			sleep(rand()*1.0/RAND_MAX*30);
+			sleep(10);
 			continue;
 		}
 
@@ -202,7 +215,7 @@ void signal_handler(int sig)
 }
 
 
-#define THREADNUM 1015
+#define THREADNUM 8000
 
 int main(int argc, char *argv[])
 {

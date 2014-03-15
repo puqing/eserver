@@ -10,14 +10,17 @@
 #include <syslog.h>
 #include <assert.h>
 
-#include "EpollServer.h"
-#include "ObjectQueue.h"
-#include "Connection.h"
-#include "ConnectionManager.h"
+#include "epollserver.h"
+#include "connection.h"
 
 #define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
 
-EpollServer gEpollServer;
+struct epollserver {
+	int fd;
+	int epfd;
+};
+
+struct epollserver *g_es;
 
 static int create_and_bind (int port)
 {
@@ -121,12 +124,12 @@ static int accept_connection(int sfd)
 	return infd;
 }
 
-void EpollServer::acceptAllConnection()
+void accept_all_connection(struct epollserver *es)
 {
 	struct epoll_event event;
 
 	while (1) {
-		int infd = accept_connection(mFD);
+		int infd = accept_connection(es->fd);
 		if (infd == -1) {
 			break;
 		}
@@ -141,12 +144,11 @@ void EpollServer::acceptAllConnection()
 			break;
 		}
 
-
-		Connection *conn = (Connection*)gConnectionManager.get(infd);
+		struct connection *conn = get_conn(g_cm, infd);
 		assert(conn != NULL);
 		event.data.ptr = conn;
 		event.events = EPOLLIN | EPOLLET;
-		res = epoll_ctl(mEPFD, EPOLL_CTL_ADD, conn->getFD(), &event);
+		res = epoll_ctl(es->epfd, EPOLL_CTL_ADD, get_fd(conn), &event);
 		if (res == -1)
 		{
 			SYSLOG_ERROR("epoll_ctl");
@@ -155,10 +157,11 @@ void EpollServer::acceptAllConnection()
 	}
 }
 
-int EpollServer::init(int port)
+struct epollserver * init_server(int port)
 {
 	int sfd;
 	int res;
+	struct epollserver *es;
 	struct epoll_event event;
 
 	sfd = create_and_bind(port);
@@ -176,41 +179,43 @@ int EpollServer::init(int port)
 		abort ();
 	}
 
-	mFD = sfd;
+	g_es = es = malloc(sizeof(struct epollserver));
 
-	mEPFD = epoll_create1 (0);
-	if (mEPFD == -1)
+	es->fd = sfd;
+
+	es->epfd = epoll_create1 (0);
+	if (es->epfd == -1)
 	{
 		SYSLOG_ERROR("epoll_create");
 		abort ();
 	}
 
-	event.data.ptr = this;
+	event.data.ptr = es;
 	event.events = EPOLLIN | EPOLLET;
-	res = epoll_ctl (mEPFD, EPOLL_CTL_ADD, sfd, &event);
+	res = epoll_ctl (es->epfd, EPOLL_CTL_ADD, sfd, &event);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("epoll_ctl");
 		abort ();
 	}
 
-	return 0;
+	return es;
 }
 
-int EpollServer::stop()
+void stop_server(struct epollserver *es)
 {
-	return 0;
+	return;
 }
 
-int EpollServer::rearmOut(Connection *conn, bool rearm)
+int rearm_out(struct epollserver *es, struct connection *conn, int rearm)
 {
 	struct epoll_event event;
 	int res;
 
-	syslog(LOG_INFO, "[%x:%x:%d:] Rearm out %d", (unsigned int)conn, (unsigned int)pthread_self(), conn->getFD(), rearm);
+	syslog(LOG_INFO, "[%x:%x:%d:] Rearm out %d", (unsigned int)conn, (unsigned int)pthread_self(), get_fd(conn), rearm);
 	event.data.ptr = conn;
 	event.events = EPOLLET | EPOLLIN | (rearm?EPOLLOUT:0);
-	res = epoll_ctl(mEPFD, EPOLL_CTL_MOD, conn->getFD(), &event);
+	res = epoll_ctl(es->epfd, EPOLL_CTL_MOD, get_fd(conn), &event);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("epoll_ctl");
@@ -218,5 +223,15 @@ int EpollServer::rearmOut(Connection *conn, bool rearm)
 	} else {
 		return 0;
 	}
+}
+
+int get_epfd(struct epollserver *es)
+{
+	return es->epfd;
+}
+
+int get_sfd(struct epollserver *es)
+{
+	return es->fd;
 }
 

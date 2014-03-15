@@ -4,16 +4,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "ObjectQueue.h"
-#include "Connection.h"
-#include "ConnectionManager.h"
-#include "EpollServer.h"
-#include "Worker.h"
+#include "connection.h"
+#include "epollserver.h"
+#include "worker.h"
 
 int main(int argc, char *argv[])
 {
 
 	int port = 0;
+	struct epollserver *es;
 
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s port\n", argv[0]);
@@ -22,24 +21,25 @@ int main(int argc, char *argv[])
 
 	sscanf(argv[1], "%d", &port);
 
-	daemon(0, 0);
+//	daemon(0, 0);
 
 	signal(SIGPIPE, SIG_IGN);
 
-	openlog("game_server", 0, LOG_USER);
+	openlog("gserver", 0, LOG_USER);
 
 	syslog(LOG_INFO, "server start");
 
-	gEpollServer.init(port);
+	es = init_server(port);
+	init_connectionmanager(10000);
 
-	Worker::start(&gEpollServer, 8);
+	start_workers(es, 8);
 
 	while (1) {
-		syslog(LOG_INFO, "Concurrent connection number = %d\n", gConnectionManager.getNumber());
+		syslog(LOG_INFO, "Concurrent connection number = %d\n", get_conn_num(g_cm));
 		sleep(1);
 	}
 
-	gEpollServer.stop();
+	stop_server(es);
 
 	syslog(LOG_INFO, "server stop");
 
