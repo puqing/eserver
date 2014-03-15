@@ -16,6 +16,9 @@ static char *ip_addr = 0;
 
 static int gStop = 0;
 
+static unsigned int conn_total = 0;
+float avg_conn_per_sec = 0;
+
 static int shrink_socket_send_buffer(int sfd)
 {
 	int size;
@@ -180,6 +183,8 @@ void *doit(void *str)
 			continue;
 		}
 
+		__sync_add_and_fetch(&conn_total, 1);
+
 		print_local_port(sfd);
 
 		count = send_data(sfd, (char*)str);
@@ -209,11 +214,18 @@ void *doit(void *str)
 	return NULL;
 }
 
+static time_t start_time;
+
 void signal_handler(int sig)
 {
+	time_t end_time;
+
+	time(&end_time);
+
+	avg_conn_per_sec = 1.0*conn_total/(end_time-start_time);
+
 	gStop = 1;
 }
-
 
 #define THREADNUM 8000
 
@@ -232,6 +244,8 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
+	time(&start_time);
+
 	ip_addr = argv[1];
 
 	for (i = 0; i < THREADNUM; ++i) {
@@ -246,6 +260,7 @@ int main(int argc, char *argv[])
 		pthread_join(tid[i], NULL);
 	}
 
+	fprintf(stderr, "avg_conn_per_sec = %f\n", avg_conn_per_sec);
 
 	return 0;
 }
