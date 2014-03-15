@@ -136,6 +136,7 @@ void read_data(struct connection *conn)
 				syslog(LOG_ERR, "[%x:%x:%d:] read: %s\n",
 						(unsigned int)conn, (unsigned int)pthread_self(), conn->fd,
 						strerror(errno));
+				close_connection(conn);
 			}
 		}
 	} while (count >0);

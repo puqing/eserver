@@ -49,9 +49,10 @@ static void *work(void *data)
 					syslog(LOG_INFO, "%s:%d: events = %x", "epoll error on listening fd", get_sfd(w->es), events[i].events);
 				} else {
 					syslog(LOG_INFO, "%s:%d: events = %x", "epoll error on working fd", get_fd((struct connection*)events[i].data.ptr), events[i].events);
-					close_connection((struct connection*)events[i].data.ptr);
+//					close_connection((struct connection*)events[i].data.ptr);
 				}
-			} else if (w->es == events[i].data.ptr) {
+			}
+			if (w->es == events[i].data.ptr) {
 				accept_all_connection(w->es);
 			} else if (events[i].events & EPOLLIN) {
 				read_data((struct connection*)events[i].data.ptr);
