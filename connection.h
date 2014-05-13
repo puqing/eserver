@@ -13,10 +13,8 @@ struct connection *allocate_connections(size_t num);
 void set_conn(struct connection *conn_array, size_t i, struct connection *conn);
 struct connection *get_conn(struct connection *conn_array, size_t i);
 
-typedef void server_handler(struct connection *conn,
-		const char* msg, size_t len);
-
-void init_connection(struct connection *conn, int fd, server_handler *sh);
+struct server;
+void init_connection(struct connection *conn, int fd, struct server *s);
 void set_conn_fd(struct connection *conn, int fd);
 
 struct poller;

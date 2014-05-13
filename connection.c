@@ -17,8 +17,6 @@
 #define WRITE_BUFFER_SIZE (5*1024)
 #define READ_BUFFER_SIZE 1024
 
-struct connectionmanager *g_cm;
-
 struct connection
 {
 	int fd;
@@ -29,8 +27,8 @@ struct connection
 	pthread_t reading;
 	pthread_mutex_t read_lock;
 	pthread_mutex_t write_buf_lock;
-	server_handler *sh;
 	struct poller *p;
+	struct server *s;
 };
 
 int get_conn_fd(struct connection *conn)
@@ -38,10 +36,10 @@ int get_conn_fd(struct connection *conn)
 	return conn->fd;
 }
 
-void init_connection(struct connection *conn, int fd, server_handler *sh)
+void init_connection(struct connection *conn, int fd, struct server *s)
 {
 	conn->fd = fd;
-	conn->sh = sh;
+	conn->s = s;
 	conn->reading = 0;
 	conn->write_buf_end = conn->write_buf = (char*)malloc(WRITE_BUFFER_SIZE);
 	conn->read_buf_end = conn->read_buf = (char*)malloc(READ_BUFFER_SIZE);
@@ -61,7 +59,7 @@ char *process_data(struct connection *conn, char *buf, size_t size)
 			break;
 		}
 		buf += sizeof(uint16_t);
-		conn->sh(conn, buf, len);
+		(*get_handler(conn->s))(conn, buf, len);
 		buf += len;
 		size -= len;
 	}
@@ -99,6 +97,7 @@ void read_data(struct connection *conn)
 				conn->read_buf_end -= p-conn->read_buf;
 			}
 		} else if (count == 0) {
+
 			syslog(LOG_INFO, "[%x:%x:%d:] Remote closed\n",
 				(unsigned int)conn, (unsigned int)pthread_self(), conn->fd);
 			close_connection(conn);
@@ -121,8 +120,6 @@ void read_data(struct connection *conn)
 	} while (count >0);
 }
 
-void recycle_connection(struct connection *conn);
-
 /*
  * Note: conn->reading is intentionally untouched in this function.
  */
@@ -136,7 +133,7 @@ void close_connection(struct connection *conn)
 
 	syslog(LOG_INFO, "[%x:%x:%d:] fd closed",
 		(unsigned int)conn, (unsigned int)pthread_self(), conn->fd);
-	recycle_connection(conn);
+	recycle_connection(conn->s, conn);
 }
 
 /*
@@ -231,7 +228,7 @@ void set_conn_fd(struct connection *conn, int fd)
 
 struct connection *allocate_connections(size_t num)
 {
-	return malloc(sizeof(struct connection*) * num);
+	return malloc(sizeof(struct connection) * num);
 }
 
 #if 0

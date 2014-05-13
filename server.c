@@ -33,9 +33,9 @@ struct conn_queue
 
 #define FD_BASE 1000
 
-static void push_conn(struct conn_queue *cm, struct connection *conn);
+static void push_conn(struct conn_queue *cq, struct connection *conn);
 
-static struct conn_queue *create_conn_queue(size_t size, server_handler *sh)
+static struct conn_queue *create_conn_queue(size_t size, struct server *s)
 {
 	unsigned int cap;
 	int i;
@@ -54,7 +54,7 @@ static struct conn_queue *create_conn_queue(size_t size, server_handler *sh)
 	for (i = 0; i < size; ++i)
 	{
 		struct connection *conn = get_conn(cq->all_conn, i);
-		init_connection(conn, FD_BASE +i, sh);
+		init_connection(conn, FD_BASE +i, s);
 		push_conn(cq, conn);
 	}
 
@@ -63,35 +63,33 @@ static struct conn_queue *create_conn_queue(size_t size, server_handler *sh)
 	return cq;
 }
 
-static void destroy_conn_queue(struct conn_queue *cm)
+static void destroy_conn_queue(struct conn_queue *cq)
 {
-	free(cm->free_conn);
-	free(cm->all_conn);
-	free(cm);
+	free(cq->free_conn);
+	free(cq->all_conn);
+	free(cq);
 }
 
-static struct connection *pop_conn(struct conn_queue *cm);
-
-static void push_conn(struct conn_queue *cm, struct connection *conn)
+static void push_conn(struct conn_queue *cq, struct connection *conn)
 {
-	pthread_mutex_lock(&cm->lock);
-	cm->free_conn[cm->tail & cm->mask]= conn;
-	++cm->tail;
-	pthread_mutex_unlock(&cm->lock);
+	pthread_mutex_lock(&cq->lock);
+	cq->free_conn[cq->tail & cq->mask]= conn;
+	++cq->tail;
+	pthread_mutex_unlock(&cq->lock);
 }
 
-static struct connection *pop_conn(struct conn_queue *cm)
+static struct connection *pop_conn(struct conn_queue *cq)
 {
 	struct connection *conn;
 
-	pthread_mutex_lock(&cm->lock);
-	if (cm->head == cm->tail) {
+	pthread_mutex_lock(&cq->lock);
+	if (cq->head == cq->tail) {
 		conn = NULL;
 	} else {
-		conn = cm->free_conn[cm->head & cm->mask];
-		++cm->head;
+		conn = cq->free_conn[cq->head & cq->mask];
+		++cq->head;
 	}
-	pthread_mutex_unlock(&cm->lock);
+	pthread_mutex_unlock(&cq->lock);
 
 	return conn;
 }
@@ -104,7 +102,7 @@ static struct connection *pop_conn(struct conn_queue *cm)
 struct server
 {
 	int fd;
-//	server_handler handler;
+	server_handler *handler;
 	struct conn_queue *cq;
 };
 
@@ -220,46 +218,6 @@ struct connection *accept_connection(struct server *s)
 	return conn;
 }
 
-#if 0
-void accept_all_connection(struct server *svr)
-{
-	struct epoll_event event;
-
-	while (1) {
-		int infd = accept_connection(svr->fd);
-		if (infd == -1) {
-			break;
-		}
-		
-/*		int res = make_socket_non_blocking(infd);
-		if (res == -1) {
-			break;
-		}*/
-
-/*		res = shrink_socket_send_buffer(infd);
-		if (res == -1) {
-			break;
-		}*/
-
-#if 0
-		struct connection *conn = get_conn(g_cm, infd);
-		assert(conn != NULL);
-		event.data.ptr = conn;
-		event.events = EPOLLIN | EPOLLET;
-		res = epoll_ctl(svr->epfd, EPOLL_CTL_ADD, get_fd(conn), &event);
-		if (res == -1)
-		{
-			SYSLOG_ERROR("epoll_ctl");
-			abort ();
-		}
-#endif
-		struct connection *conn = get_conn(g_cm, infd);
-		assert(conn != NULL);
-		poller_add_conn(poller, infd, conn);
-	}
-}
-#endif
-
 struct server *create_server(char *ip, int port, size_t max_conn_num,
 		size_t recv_buf_size, size_t send_buf_size,
 		server_handler *sh)
@@ -286,8 +244,8 @@ struct server *create_server(char *ip, int port, size_t max_conn_num,
 	svr = malloc(sizeof(struct server));
 
 	svr->fd = fd;
-//	svr->handler = sh;
-	svr->cq = create_conn_queue(10000, sh);
+	svr->handler = sh;
+	svr->cq = create_conn_queue(max_conn_num, svr);
 
 	return svr;
 }
@@ -305,5 +263,10 @@ size_t get_conn_num(struct server *s)
 int get_server_fd(struct server *s)
 {
 	return s->fd;
+}
+
+server_handler *get_handler(struct server *s)
+{
+	return s->handler;
 }
 
