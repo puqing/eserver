@@ -8,8 +8,9 @@
 #include <syslog.h>
 #include <assert.h>
 
-#include "epollserver.h"
 #include "connection.h"
+#include "server.h"
+#include "poller.h"
 
 #define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
 
@@ -28,47 +29,25 @@ struct connection
 	pthread_t reading;
 	pthread_mutex_t read_lock;
 	pthread_mutex_t write_buf_lock;
+	server_handler *sh;
+	struct poller *p;
 };
 
-int get_fd(struct connection *conn)
+int get_conn_fd(struct connection *conn)
 {
 	return conn->fd;
 }
 
-void init_connection(struct connection *conn)
+void init_connection(struct connection *conn, int fd, server_handler *sh)
 {
-	conn->fd = -1;
+	conn->fd = fd;
+	conn->sh = sh;
 	conn->reading = 0;
 	conn->write_buf_end = conn->write_buf = (char*)malloc(WRITE_BUFFER_SIZE);
 	conn->read_buf_end = conn->read_buf = (char*)malloc(READ_BUFFER_SIZE);
 
 	pthread_mutex_init(&conn->read_lock, NULL);
 	pthread_mutex_init(&conn->write_buf_lock, NULL);
-}
-
-int send_data(struct connection *conn, const char *data, size_t num);
-
-void process_message(struct connection *conn, const char *msg, size_t len)
-{
-	char buf[10000];
-	char *p;
-	int i;
-
-	*(uint16_t*)buf = 30*len+3+3;
-	p = buf + sizeof(uint16_t);
-
-	p[0] = 0;
-	strcpy(p, "^^^");
-	p += 3;
-	for (i=0; i<30; ++i) {
-		memcpy(p, msg, len);
-		p += len;
-	}
-
-	strcpy(p, "$$$");
-	p += 3;
-
-	send_data(conn, buf, p-buf);
 }
 
 char *process_data(struct connection *conn, char *buf, size_t size)
@@ -82,7 +61,7 @@ char *process_data(struct connection *conn, char *buf, size_t size)
 			break;
 		}
 		buf += sizeof(uint16_t);
-		process_message(conn, buf, len);
+		conn->sh(conn, buf, len);
 		buf += len;
 		size -= len;
 	}
@@ -161,7 +140,7 @@ void close_connection(struct connection *conn)
 }
 
 /*
- * direct_send: true, called by sendData(); false, called by EpollServer
+ * direct_send: true, called by sendData(); false, called by workers
  */
 void send_buffered_data(struct connection *conn, int direct_send)
 {
@@ -172,7 +151,7 @@ void send_buffered_data(struct connection *conn, int direct_send)
 		pthread_mutex_lock(&conn->write_buf_lock);
 
 		if (conn->write_buf == conn->write_buf_end) {
-			if(!direct_send) rearm_out(g_es, conn, 0);
+			if(!direct_send) rearm_out(conn->p, conn, 0);
 			pthread_mutex_unlock(&conn->write_buf_lock);
 			break;
 		}
@@ -195,7 +174,7 @@ void send_buffered_data(struct connection *conn, int direct_send)
 		} else {
 			assert(res == -1);
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				if (direct_send) rearm_out(g_es, conn, 1);
+				if (direct_send) rearm_out(conn->p, conn, 1);
 			}
 			pthread_mutex_unlock(&conn->write_buf_lock);
 			SYSLOG_ERROR("write");
@@ -231,63 +210,14 @@ int send_data(struct connection *conn, const char *data, size_t num)
 	return 0;
 }
 
-struct connectionmanager
+static void clear_conn(struct connection *conn)
 {
-	struct connection **free_conn;
-	unsigned int head;
-	unsigned int tail;
-	unsigned int mask;
-	pthread_mutex_t lock;
-
-	struct connection *all_conn;
-//	size_t number;
-	size_t size;
-};
-
-#define FD_BASE 1000
-
-void push_conn(struct connectionmanager *cm, struct connection *conn);
-
-void init_connectionmanager(size_t size)
-{
-	unsigned int cap;
-	int i;
-
-	g_cm = malloc(sizeof(struct connectionmanager));
-
-	cap = 1;
-	while (cap <= size) cap <<= 1;
-	g_cm->mask = cap - 1;
-	g_cm->free_conn = malloc(sizeof(struct connection*) * cap);
-	g_cm->head = g_cm->tail = 0;
-
-	g_cm->size = size;
-	g_cm->all_conn = malloc(sizeof(struct connection) * size);
-
-	pthread_mutex_init(&g_cm->lock, NULL);
-
-	for (i = 0; i < size; ++i)
-	{
-		init_connection(&g_cm->all_conn[i]);
-		g_cm->all_conn[i].fd = FD_BASE + i;
-		push_conn(g_cm, &g_cm->all_conn[i]);
-	}
+	conn->reading = 0;
+	conn->write_buf_end = conn->write_buf;
 }
 
-void destroy_connectionmanager(struct connectionmanager *cm)
+void set_conn_fd(struct connection *conn, int fd)
 {
-	free(cm->free_conn);
-	free(cm->all_conn);
-	free(cm);
-}
-
-struct connection *pop_conn(struct connectionmanager *cm);
-
-struct connection *get_conn(struct connectionmanager *cm, int fd)
-{
-	struct connection *conn = pop_conn(cm);
-
-	assert(conn != NULL);
 	int res = dup2(fd, conn->fd);
 	if (res == -1) {
 		SYSLOG_ERROR("dup2");
@@ -296,43 +226,28 @@ struct connection *get_conn(struct connectionmanager *cm, int fd)
 
 	close(fd);
 
-	conn->reading = 0;
-	conn->write_buf_end = conn->write_buf;
-
-	return conn;
+	clear_conn(conn);
 }
 
-void recycle_connection(struct connection *conn)
+struct connection *allocate_connections(size_t num)
 {
-	push_conn(g_cm, conn);
+	return malloc(sizeof(struct connection*) * num);
 }
 
-size_t get_conn_num(struct connectionmanager *cm)
+#if 0
+void set_conn(struct connection *conn_array, size_t i, struct connection *conn)
 {
-	return cm->size - (cm->tail - cm->head);
+	conn_array[i] = *conn;
+}
+#endif
+
+struct connection *get_conn(struct connection *conn_array, size_t i)
+{
+	return &conn_array[i];
 }
 
-void push_conn(struct connectionmanager *cm, struct connection *conn)
+void set_conn_poller(struct connection *conn, struct poller *p)
 {
-	pthread_mutex_lock(&cm->lock);
-	cm->free_conn[cm->tail & cm->mask]= conn;
-	++cm->tail;
-	pthread_mutex_unlock(&cm->lock);
-}
-
-struct connection *pop_conn(struct connectionmanager *cm)
-{
-	struct connection *conn;
-
-	pthread_mutex_lock(&cm->lock);
-	if (cm->head == cm->tail) {
-		conn = NULL;
-	} else {
-		conn = cm->free_conn[cm->head & cm->mask];
-		++cm->head;
-	}
-	pthread_mutex_unlock(&cm->lock);
-
-	return conn;
+	conn->p = p;
 }
 

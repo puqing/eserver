@@ -4,7 +4,7 @@ LDFLAGS=-pthread -static
 
 all: $(EXE)
 
-server: epollserver.o connection.o main.o worker.o
+server: main.o server.o poller.o connection.o worker.o
 	gcc $^ -o $@ $(LDFLAGS)
 
 client: client.o

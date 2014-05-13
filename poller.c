@@ -1,0 +1,122 @@
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <pthread.h>
+#include <syslog.h>
+#include <errno.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <assert.h>
+#include <sys/epoll.h>
+
+#include "connection.h"
+#include "server.h"
+#include "poller.h"
+
+#define MAX_SERVER_NUM 16
+
+struct poller
+{
+	int fd;
+	struct server *servers[MAX_SERVER_NUM];
+	unsigned int svr_num;
+};
+
+#define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
+
+struct poller *create_poller()
+{
+	struct poller *p = malloc(sizeof(struct poller));
+	p->fd = epoll_create1 (0);
+	if (p->fd == -1)
+	{
+		SYSLOG_ERROR("epoll_create");
+		abort ();
+	}
+
+	p->svr_num = 0;
+
+	return p;
+}
+
+void add_server(struct poller *p, struct server *s)
+{
+	struct epoll_event event;
+
+	p->servers[p->svr_num++] = s;
+
+	event.data.ptr = s;
+	event.events = EPOLLIN | EPOLLET;
+	int res = epoll_ctl(p->fd, EPOLL_CTL_ADD, get_server_fd(s), &event);
+	if (res == -1)
+	{
+		SYSLOG_ERROR("epoll_ctl");
+		abort ();
+	}
+}
+
+/*
+ * TODO: optimize search
+ */
+struct server *find_server(struct poller *p, void *s)
+{
+	int i;
+	for (i = 0; i < p->svr_num; ++i) {
+		if (p->servers[i] == s) {
+			return p->servers[i];
+		}
+	}
+
+	return NULL;
+}
+
+void add_connection(struct poller *p, struct connection *conn)
+{
+	struct epoll_event event;
+
+	event.data.ptr = conn;
+	event.events = EPOLLIN | EPOLLET;
+	int res = epoll_ctl(p->fd, EPOLL_CTL_ADD, get_conn_fd(conn), &event);
+	if (res == -1)
+	{
+		SYSLOG_ERROR("epoll_ctl");
+		abort ();
+	}
+
+	set_conn_poller(conn, p);
+}
+
+int get_poller_fd(struct poller *p)
+{
+	return p->fd;
+}
+
+int rearm_out(struct poller *p, struct connection *conn, int rearm)
+{
+	struct epoll_event event;
+	int res;
+
+	syslog(LOG_INFO, "[%x:%x:%d:] Rearm out %d", (unsigned int)conn, (unsigned int)pthread_self(), get_conn_fd(conn), rearm);
+	event.data.ptr = conn;
+	event.events = EPOLLET | EPOLLIN | (rearm?EPOLLOUT:0);
+	res = epoll_ctl(p->fd, EPOLL_CTL_MOD, get_conn_fd(conn), &event);
+	if (res == -1)
+	{
+		SYSLOG_ERROR("epoll_ctl");
+		return -1;
+	} else {
+		return 0;
+	}
+}
+
+void log_conn_num(struct poller *p)
+{
+	int i;
+	for (i = 0; i < p->svr_num; ++i) {
+		syslog(LOG_INFO, "Concurrent connection number (server %d)= %d\n", i, get_conn_num(p->servers[i]));
+	}
+}
+
