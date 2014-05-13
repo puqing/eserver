@@ -18,6 +18,7 @@
 
 struct worker {
 	struct epollserver *es;
+	pthread_t tid;
 };
 
 static void *work(void *data)
@@ -67,20 +68,13 @@ static void *work(void *data)
 	return NULL;
 }
 
-int start_workers(struct epollserver *es, int thread_number)
+struct worker *create_worker(struct epollserver *es)
 {
-	pthread_t *tid;
-	int i;
+	struct worker *w = malloc(sizeof(struct worker));
+	w->es = es;
+	pthread_create(&w->tid, NULL, work, (void*)w);
+	syslog(LOG_INFO, "thread %x created\n", (unsigned int)w->tid);
 
-	tid = (pthread_t*)malloc(thread_number * sizeof(*tid));
-
-	for (i = 0; i < thread_number; ++i) {
-		struct worker *w = malloc(sizeof(struct worker));
-		w->es = es;
-		pthread_create(&tid[i], NULL, work, (void*)w);
-		syslog(LOG_INFO, "thread %x created\n", (unsigned int)tid[i]);
-	}
-
-	return 0;
+	return w;
 }
 

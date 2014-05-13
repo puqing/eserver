@@ -32,7 +32,10 @@ int main(int argc, char *argv[])
 	es = init_server(port);
 	init_connectionmanager(10000);
 
-	start_workers(es, 8);
+	int i;
+	for (i = 0; i < 8; ++i) {
+		create_worker(es);
+	}
 
 	while (1) {
 		syslog(LOG_INFO, "Concurrent connection number = %d\n", get_conn_num(g_cm));

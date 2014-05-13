@@ -1,4 +1,4 @@
 
 struct epollserver;
 
-int start_workers(struct epollserver *es, int thread_number);
+struct worker *create_worker(struct epollserver *es);
