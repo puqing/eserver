@@ -11,7 +11,7 @@
 #include <assert.h>
 
 #include "connection.h"
-#include "server.h"
+#include "service.h"
 #include "poller.h"
 #include "worker.h"
 
@@ -48,17 +48,17 @@ static void *work(void *data)
 				(events[i].events & EPOLLHUP) ||
 				!((events[i].events & EPOLLIN) || (events[i].events & EPOLLOUT)))
 			{
-				if (find_server(w->p, events[i].data.ptr)) {
-					syslog(LOG_INFO, "%s:%d: events = %x", "epoll error on listening fd", get_server_fd((struct server*)events[i].data.ptr), events[i].events);
+				if (find_service(w->p, events[i].data.ptr)) {
+					syslog(LOG_INFO, "%s:%d: events = %x", "epoll error on listening fd", get_service_fd((struct service*)events[i].data.ptr), events[i].events);
 				} else {
 					syslog(LOG_INFO, "%s:%d: events = %x", "epoll error on working fd", get_conn_fd((struct connection*)events[i].data.ptr), events[i].events);
 //					close_connection((struct connection*)events[i].data.ptr);
 				}
 			}
-			if (find_server(w->p, events[i].data.ptr)) {
+			if (find_service(w->p, events[i].data.ptr)) {
 //				accept_all_connection(w->p);
 				struct connection *conn;
-				while (NULL != (conn = accept_connection((struct server*)events[i].data.ptr))) {
+				while (NULL != (conn = accept_connection((struct service*)events[i].data.ptr))) {
 					add_connection(w->p, conn);
 				}
 			} else if (events[i].events & EPOLLIN) {

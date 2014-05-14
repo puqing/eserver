@@ -12,7 +12,7 @@
 #include <assert.h>
 
 #include "connection.h"
-#include "server.h"
+#include "service.h"
 
 /***************************
 *    Connection Manager    *
@@ -57,7 +57,7 @@ static struct connection *pop_conn(struct conn_queue *cq)
 	return conn;
 }
 
-static struct conn_queue *create_conn_queue(size_t size, struct server *s)
+static struct conn_queue *create_conn_queue(size_t size, struct service *s)
 {
 	unsigned int cap;
 	int i;
@@ -95,12 +95,12 @@ static void destroy_conn_queue(struct conn_queue *cq)
 #define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
 
 /**********************
- *   server           *
+ *   service           *
  *********************/
-struct server
+struct service
 {
 	int fd;
-	server_handler *handler;
+	service_handler *handler;
 	struct conn_queue *cq;
 };
 
@@ -168,7 +168,7 @@ static int shrink_socket_send_buffer(int sfd)
 	return 0;
 }
 
-struct connection *accept_connection(struct server *s)
+struct connection *accept_connection(struct service *s)
 {
 	struct sockaddr in_addr;
 	socklen_t in_len;
@@ -216,13 +216,13 @@ struct connection *accept_connection(struct server *s)
 	return conn;
 }
 
-struct server *create_server(char *ip, int port, size_t max_conn_num,
+struct service *create_service(char *ip, int port, size_t max_conn_num,
 		size_t recv_buf_size, size_t send_buf_size,
-		server_handler *sh)
+		service_handler *sh)
 {
 	int fd;
 	int res;
-	struct server *svr;
+	struct service *svr;
 
 	fd = create_socket_and_bind(port);
 	if (fd == -1)
@@ -239,7 +239,7 @@ struct server *create_server(char *ip, int port, size_t max_conn_num,
 		abort ();
 	}
 
-	svr = malloc(sizeof(struct server));
+	svr = malloc(sizeof(struct service));
 
 	svr->fd = fd;
 	svr->handler = sh;
@@ -248,22 +248,22 @@ struct server *create_server(char *ip, int port, size_t max_conn_num,
 	return svr;
 }
 
-void recycle_connection(struct server *s, struct connection *conn)
+void recycle_connection(struct service *s, struct connection *conn)
 {
 	push_conn(s->cq, conn);
 }
 
-size_t get_conn_num(struct server *s)
+size_t get_conn_num(struct service *s)
 {
 	return s->cq->size - (s->cq->tail - s->cq->head);
 }
 
-int get_server_fd(struct server *s)
+int get_service_fd(struct service *s)
 {
 	return s->fd;
 }
 
-server_handler *get_handler(struct server *s)
+service_handler *get_handler(struct service *s)
 {
 	return s->handler;
 }

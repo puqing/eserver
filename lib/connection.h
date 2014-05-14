@@ -9,8 +9,8 @@ int send_data(struct connection *conn, const char *data, size_t num);
 struct connection *allocate_connections(size_t num);
 struct connection *get_conn(struct connection *conn_array, size_t i);
 
-struct server;
-void init_connection(struct connection *conn, int fd, struct server *s);
+struct service;
+void init_connection(struct connection *conn, int fd, struct service *s);
 void set_conn_fd(struct connection *conn, int fd);
 
 struct poller;

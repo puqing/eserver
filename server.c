@@ -7,7 +7,7 @@
 #include <string.h>
 
 #include "connection.h"
-#include "server.h"
+#include "service.h"
 #include "poller.h"
 #include "worker.h"
 
@@ -56,9 +56,9 @@ int main(int argc, char *argv[])
 
 	struct poller *p = create_poller();
 
-	struct server *s = create_server(NULL, port, 5000, 1024, 1024*5, &process_message);
+	struct service *s = create_service(NULL, port, 5000, 1024, 1024*5, &process_message);
 
-	add_server(p, s);
+	add_service(p, s);
 
 	int i;
 	for (i = 0; i < 8; ++i) {
@@ -66,7 +66,6 @@ int main(int argc, char *argv[])
 	}
 
 	while (1) {
-//		enum_server(p, &log_conn_num, NULL);
 		log_conn_num(p);
 		sleep(1);
 	}

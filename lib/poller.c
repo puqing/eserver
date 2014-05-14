@@ -13,15 +13,15 @@
 #include <sys/epoll.h>
 
 #include "connection.h"
-#include "server.h"
+#include "service.h"
 #include "poller.h"
 
-#define MAX_SERVER_NUM 16
+#define MAX_SERVICE_NUM 16
 
 struct poller
 {
 	int fd;
-	struct server *servers[MAX_SERVER_NUM];
+	struct service *services[MAX_SERVICE_NUM];
 	unsigned int svr_num;
 };
 
@@ -42,15 +42,15 @@ struct poller *create_poller()
 	return p;
 }
 
-void add_server(struct poller *p, struct server *s)
+void add_service(struct poller *p, struct service *s)
 {
 	struct epoll_event event;
 
-	p->servers[p->svr_num++] = s;
+	p->services[p->svr_num++] = s;
 
 	event.data.ptr = s;
 	event.events = EPOLLIN | EPOLLET;
-	int res = epoll_ctl(p->fd, EPOLL_CTL_ADD, get_server_fd(s), &event);
+	int res = epoll_ctl(p->fd, EPOLL_CTL_ADD, get_service_fd(s), &event);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("epoll_ctl");
@@ -61,12 +61,12 @@ void add_server(struct poller *p, struct server *s)
 /*
  * TODO: optimize search
  */
-struct server *find_server(struct poller *p, void *s)
+struct service *find_service(struct poller *p, void *s)
 {
 	int i;
 	for (i = 0; i < p->svr_num; ++i) {
-		if (p->servers[i] == s) {
-			return p->servers[i];
+		if (p->services[i] == s) {
+			return p->services[i];
 		}
 	}
 
@@ -116,7 +116,7 @@ void log_conn_num(struct poller *p)
 {
 	int i;
 	for (i = 0; i < p->svr_num; ++i) {
-		syslog(LOG_INFO, "Concurrent connection number (server %d)= %d\n", i, get_conn_num(p->servers[i]));
+		syslog(LOG_INFO, "Concurrent connection number (service %d)= %d\n", i, get_conn_num(p->services[i]));
 	}
 }
 

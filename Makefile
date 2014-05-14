@@ -8,7 +8,7 @@ all: $(EXE) $(LIB)
 $(LIB):
 	(cd lib && make)
 
-server: main.o $(LIB)
+server: server.o $(LIB)
 	gcc $^ -o $@ $(LDFLAGS)
 
 client: client.o
@@ -19,4 +19,5 @@ client: client.o
 
 clean:
 	rm -f *.o $(EXE)
+	(cd lib && make clean)
 

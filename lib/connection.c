@@ -9,7 +9,7 @@
 #include <assert.h>
 
 #include "connection.h"
-#include "server.h"
+#include "service.h"
 #include "poller.h"
 
 #define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
@@ -28,7 +28,7 @@ struct connection
 	pthread_mutex_t read_lock;
 	pthread_mutex_t write_buf_lock;
 	struct poller *p;
-	struct server *s;
+	struct service *s;
 };
 
 int get_conn_fd(struct connection *conn)
@@ -36,7 +36,7 @@ int get_conn_fd(struct connection *conn)
 	return conn->fd;
 }
 
-void init_connection(struct connection *conn, int fd, struct server *s)
+void init_connection(struct connection *conn, int fd, struct service *s)
 {
 	conn->fd = fd;
 	conn->s = s;
