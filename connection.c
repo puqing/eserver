@@ -48,7 +48,7 @@ void init_connection(struct connection *conn, int fd, struct server *s)
 	pthread_mutex_init(&conn->write_buf_lock, NULL);
 }
 
-char *process_data(struct connection *conn, char *buf, size_t size)
+static const char *process_data(struct connection *conn, const char *buf, size_t size)
 {
 	uint16_t len;
 
@@ -65,6 +65,22 @@ char *process_data(struct connection *conn, char *buf, size_t size)
 	}
 
 	return buf;
+}
+
+/*
+ * Note: conn->reading is intentionally untouched in this function.
+ */
+static void close_connection(struct connection *conn)
+{
+	if (close(conn->fd) == -1) {
+		syslog(LOG_INFO, "[%x:%x:%d:] close: %s",
+			(unsigned int)conn, (unsigned int)pthread_self(), conn->fd, strerror(errno));
+		return;
+	}
+
+	syslog(LOG_INFO, "[%x:%x:%d:] fd closed",
+		(unsigned int)conn, (unsigned int)pthread_self(), conn->fd);
+	recycle_connection(conn->s, conn);
 }
 
 void read_data(struct connection *conn)
@@ -88,7 +104,7 @@ void read_data(struct connection *conn)
 		if (count > 0) {
 			pthread_mutex_unlock(&conn->read_lock);
 			conn->read_buf_end += count;
-			char *p = process_data(conn, conn->read_buf, conn->read_buf_end-conn->read_buf);
+			const char *p = process_data(conn, conn->read_buf, conn->read_buf_end-conn->read_buf);
 			assert(p >= conn->read_buf && p <= conn->read_buf_end);
 			if (p == conn->read_buf_end) {
 				conn->read_buf_end = conn->read_buf;
@@ -118,22 +134,6 @@ void read_data(struct connection *conn)
 			}
 		}
 	} while (count >0);
-}
-
-/*
- * Note: conn->reading is intentionally untouched in this function.
- */
-void close_connection(struct connection *conn)
-{
-	if (close(conn->fd) == -1) {
-		syslog(LOG_INFO, "[%x:%x:%d:] close: %s",
-			(unsigned int)conn, (unsigned int)pthread_self(), conn->fd, strerror(errno));
-		return;
-	}
-
-	syslog(LOG_INFO, "[%x:%x:%d:] fd closed",
-		(unsigned int)conn, (unsigned int)pthread_self(), conn->fd);
-	recycle_connection(conn->s, conn);
 }
 
 /*
@@ -230,13 +230,6 @@ struct connection *allocate_connections(size_t num)
 {
 	return malloc(sizeof(struct connection) * num);
 }
-
-#if 0
-void set_conn(struct connection *conn_array, size_t i, struct connection *conn)
-{
-	conn_array[i] = *conn;
-}
-#endif
 
 struct connection *get_conn(struct connection *conn_array, size_t i)
 {

@@ -33,7 +33,29 @@ struct conn_queue
 
 #define FD_BASE 1000
 
-static void push_conn(struct conn_queue *cq, struct connection *conn);
+static void push_conn(struct conn_queue *cq, struct connection *conn)
+{
+	pthread_mutex_lock(&cq->lock);
+	cq->free_conn[cq->tail & cq->mask]= conn;
+	++cq->tail;
+	pthread_mutex_unlock(&cq->lock);
+}
+
+static struct connection *pop_conn(struct conn_queue *cq)
+{
+	struct connection *conn;
+
+	pthread_mutex_lock(&cq->lock);
+	if (cq->head == cq->tail) {
+		conn = NULL;
+	} else {
+		conn = cq->free_conn[cq->head & cq->mask];
+		++cq->head;
+	}
+	pthread_mutex_unlock(&cq->lock);
+
+	return conn;
+}
 
 static struct conn_queue *create_conn_queue(size_t size, struct server *s)
 {
@@ -68,30 +90,6 @@ static void destroy_conn_queue(struct conn_queue *cq)
 	free(cq->free_conn);
 	free(cq->all_conn);
 	free(cq);
-}
-
-static void push_conn(struct conn_queue *cq, struct connection *conn)
-{
-	pthread_mutex_lock(&cq->lock);
-	cq->free_conn[cq->tail & cq->mask]= conn;
-	++cq->tail;
-	pthread_mutex_unlock(&cq->lock);
-}
-
-static struct connection *pop_conn(struct conn_queue *cq)
-{
-	struct connection *conn;
-
-	pthread_mutex_lock(&cq->lock);
-	if (cq->head == cq->tail) {
-		conn = NULL;
-	} else {
-		conn = cq->free_conn[cq->head & cq->mask];
-		++cq->head;
-	}
-	pthread_mutex_unlock(&cq->lock);
-
-	return conn;
 }
 
 #define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
