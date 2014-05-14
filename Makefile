@@ -1,10 +1,14 @@
 EXE=server client
-CFLAGS=-pthread -g -Wall
-LDFLAGS=-pthread -static
+LIB=lib/libesvr.a
+CFLAGS=-pthread -g -Wall -I ./lib
+LDFLAGS=-L./lib -lesvr -pthread
 
-all: $(EXE)
+all: $(EXE) $(LIB)
 
-server: main.o server.o poller.o connection.o worker.o
+$(LIB):
+	(cd lib && make)
+
+server: main.o $(LIB)
 	gcc $^ -o $@ $(LDFLAGS)
 
 client: client.o
