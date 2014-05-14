@@ -12,6 +12,8 @@
 #include <assert.h>
 #include <sys/epoll.h>
 
+#include <esvr.h>
+
 #include "connection.h"
 #include "service.h"
 #include "poller.h"

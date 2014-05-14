@@ -6,10 +6,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "connection.h"
-#include "service.h"
-#include "poller.h"
-#include "worker.h"
+#include <esvr.h>
 
 static void process_message(struct connection *conn, const char *msg, size_t len)
 {
@@ -57,6 +54,10 @@ int main(int argc, char *argv[])
 	struct poller *p = create_poller();
 
 	struct service *s = create_service(NULL, port, 5000, 1024, 1024*5, &process_message);
+
+	add_service(p, s);
+
+	s = create_service(NULL, 8889, 5000, 1024, 1024*5, &process_message);
 
 	add_service(p, s);
 

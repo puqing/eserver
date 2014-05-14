@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <assert.h>
 
+#include <esvr.h>
+
 #include "connection.h"
 #include "service.h"
 
