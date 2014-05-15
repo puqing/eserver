@@ -2,11 +2,12 @@ struct connection;
 int send_data(struct connection *conn, const char *data, size_t num);
 
 struct poller;
-struct service;
 
 struct poller *create_poller();
-void add_service(struct poller *p, struct service *s);
 void log_conn_num(struct poller *p);
+
+struct service;
+void add_service(struct poller *p, struct service *s);
 
 typedef void service_handler(struct connection *conn,
 		const char* msg, size_t len);
