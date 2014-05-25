@@ -101,7 +101,7 @@ int rearm_out(struct poller *p, struct connection *conn, int rearm)
 	struct epoll_event event;
 	int res;
 
-	syslog(LOG_INFO, "[%x:%x:%d:] Rearm out %d", (unsigned int)conn, (unsigned int)pthread_self(), get_conn_fd(conn), rearm);
+	syslog(LOG_INFO, "[%lx:%lx:%d:] Rearm out %d", (uint64_t)conn, (uint64_t)pthread_self(), get_conn_fd(conn), rearm);
 	event.data.ptr = conn;
 	event.events = EPOLLET | EPOLLIN | (rearm?EPOLLOUT:0);
 	res = epoll_ctl(p->fd, EPOLL_CTL_MOD, get_conn_fd(conn), &event);
@@ -118,7 +118,7 @@ void log_conn_num(struct poller *p)
 {
 	int i;
 	for (i = 0; i < p->svr_num; ++i) {
-		syslog(LOG_INFO, "Concurrent connection number (service %d)= %d\n", i, get_conn_num(p->services[i]));
+		syslog(LOG_INFO, "Concurrent connection number (service %d)= %ld\n", i, get_conn_num(p->services[i]));
 	}
 }
 
