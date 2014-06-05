@@ -65,9 +65,10 @@ static void *work(void *data)
 				}
 			} else if (events[i].events & EPOLLIN) {
 				read_data((struct connection*)events[i].data.ptr);
-			} else {
-				assert(events[i].events & EPOLLOUT);
+			} else if (events[i].events & EPOLLOUT) {
 				send_buffered_data(((struct connection*)events[i].data.ptr), 0);
+			} else {
+				syslog(LOG_INFO, "%s:%d: events = 0x%x", "epoll event neither IN nor OUT", get_conn_fd((struct connection*)events[i].data.ptr), events[i].events);
 			}
 		}
 	}
