@@ -2,7 +2,7 @@ struct connection;
 
 int get_conn_fd(struct connection *conn);
 
-void read_data(struct connection *conn);
+void read_data(struct connection *conn, void *handle);
 void send_buffered_data(struct connection *conn, int direct_send);
 
 struct connection *allocate_connections(size_t num);

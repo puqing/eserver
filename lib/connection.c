@@ -17,7 +17,7 @@
 #define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
 
 #define WRITE_BUFFER_SIZE (5*1024)
-#define READ_BUFFER_SIZE 1024
+#define READ_BUFFER_SIZE 1024*100
 
 struct connection
 {
@@ -50,7 +50,7 @@ void init_connection(struct connection *conn, int fd, struct service *s)
 	pthread_mutex_init(&conn->write_buf_lock, NULL);
 }
 
-static const char *process_data(struct connection *conn, const char *buf, size_t size)
+static const char *process_data(struct connection *conn, const char *buf, size_t size, void *handle)
 {
 	uint16_t len;
 
@@ -61,7 +61,7 @@ static const char *process_data(struct connection *conn, const char *buf, size_t
 			break;
 		}
 		buf += sizeof(uint16_t);
-		(*get_handler(conn->s))(conn, buf, len);
+		(*get_handler(conn->s))(conn, buf, len, handle);
 		buf += len;
 		size -= len;
 	}
@@ -85,7 +85,7 @@ static void close_connection(struct connection *conn)
 	recycle_connection(conn->s, conn);
 }
 
-void read_data(struct connection *conn)
+void read_data(struct connection *conn, void *handle)
 {
 	ssize_t count;
 
@@ -106,7 +106,7 @@ void read_data(struct connection *conn)
 		if (count > 0) {
 			pthread_mutex_unlock(&conn->read_lock);
 			conn->read_buf_end += count;
-			const char *p = process_data(conn, conn->read_buf, conn->read_buf_end-conn->read_buf);
+			const char *p = process_data(conn, conn->read_buf, conn->read_buf_end-conn->read_buf, handle);
 			assert(p >= conn->read_buf && p <= conn->read_buf_end);
 			if (p == conn->read_buf_end) {
 				conn->read_buf_end = conn->read_buf;

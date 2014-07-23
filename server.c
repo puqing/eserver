@@ -8,7 +8,7 @@
 
 #include <esvr.h>
 
-static void process_message(struct connection *conn, const char *msg, size_t len)
+static void process_message(struct connection *conn, const char *msg, size_t len, void *handle)
 {
 	char buf[10000];
 	char *p;
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
 
 	int i;
 	for (i = 0; i < 8; ++i) {
-		create_worker(p);
+		create_worker(p, NULL);
 	}
 
 	while (1) {
