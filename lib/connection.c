@@ -53,15 +53,15 @@ void init_connection(struct connection *conn, int fd, struct service *s, size_t 
 
 static const char *process_data(struct connection *conn, const char *buf, size_t size, void *handle)
 {
-	uint16_t len;
+	uint32_t len;
 
-	while (size >= sizeof(uint16_t)) {
-		len = *(uint16_t*)buf;
-		size -= sizeof(uint16_t);
+	while (size >= sizeof(len)) {
+		len = *(uint32_t*)buf;
+		size -= sizeof(len);
 		if (size < len) {
 			break;
 		}
-		buf += sizeof(uint16_t);
+		buf += sizeof(len);
 		(*get_handler(conn->s))(conn, buf, len, handle);
 		buf += len;
 		size -= len;
