@@ -16,8 +16,8 @@
 
 #define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
 
-#define WRITE_BUFFER_SIZE (5*1024)
-#define READ_BUFFER_SIZE 1024*100
+//#define WRITE_BUFFER_SIZE (5*1024)
+//#define READ_BUFFER_SIZE 1024*100
 
 struct connection
 {
@@ -31,6 +31,8 @@ struct connection
 	pthread_mutex_t write_buf_lock;
 	struct poller *p;
 	struct service *s;
+	size_t recv_buf_size;
+	size_t send_buf_size;
 };
 
 int get_conn_fd(struct connection *conn)
@@ -38,13 +40,15 @@ int get_conn_fd(struct connection *conn)
 	return conn->fd;
 }
 
-void init_connection(struct connection *conn, int fd, struct service *s)
+void init_connection(struct connection *conn, int fd, struct service *s, size_t recv_buf_size, size_t send_buf_size)
 {
 	conn->fd = fd;
 	conn->s = s;
 	conn->reading = 0;
-	conn->write_buf_end = conn->write_buf = (char*)malloc(WRITE_BUFFER_SIZE);
-	conn->read_buf_end = conn->read_buf = (char*)malloc(READ_BUFFER_SIZE);
+	conn->recv_buf_size = recv_buf_size;
+	conn->send_buf_size = send_buf_size;
+	conn->write_buf_end = conn->write_buf = (char*)malloc(send_buf_size);
+	conn->read_buf_end = conn->read_buf = (char*)malloc(recv_buf_size);
 
 	pthread_mutex_init(&conn->read_lock, NULL);
 	pthread_mutex_init(&conn->write_buf_lock, NULL);
@@ -100,7 +104,7 @@ void read_data(struct connection *conn, void *handle)
 
 	do {
 		pthread_mutex_lock(&conn->read_lock);
-		count = read(conn->fd, conn->read_buf_end, READ_BUFFER_SIZE-(conn->read_buf_end-conn->read_buf));
+		count = read(conn->fd, conn->read_buf_end, conn->recv_buf_size-(conn->read_buf_end-conn->read_buf));
 		syslog(LOG_INFO, "[%lx:%lx:%d:] %ld bytes read", (uint64_t)conn, (uint64_t)pthread_self(), conn->fd, count);
 
 		if (count > 0) {
@@ -192,7 +196,7 @@ void send_buffered_data(struct connection *conn, int direct_send)
 int send_data(struct connection *conn, const char *data, size_t num)
 {
 	int required_size = conn->write_buf_end - conn->write_buf + num;
-	if (required_size > WRITE_BUFFER_SIZE) {
+	if (required_size > conn->send_buf_size) {
 		syslog(LOG_ERR, "write buffer overflow, size required: %d", required_size);
 		return -1;
 	}

@@ -59,7 +59,7 @@ static struct connection *pop_conn(struct conn_queue *cq)
 	return conn;
 }
 
-static struct conn_queue *create_conn_queue(size_t size, struct service *s)
+static struct conn_queue *create_conn_queue(size_t size, struct service *s, size_t recv_buf_size, size_t send_buf_size)
 {
 	unsigned int cap;
 	int i;
@@ -78,7 +78,7 @@ static struct conn_queue *create_conn_queue(size_t size, struct service *s)
 	for (i = 0; i < size; ++i)
 	{
 		struct connection *conn = get_conn(cq->all_conn, i);
-		init_connection(conn, FD_BASE +i, s);
+		init_connection(conn, FD_BASE +i, s, recv_buf_size, send_buf_size);
 		push_conn(cq, conn);
 	}
 
@@ -245,7 +245,7 @@ struct service *create_service(char *ip, int port, size_t max_conn_num,
 
 	svr->fd = fd;
 	svr->handler = sh;
-	svr->cq = create_conn_queue(max_conn_num, svr);
+	svr->cq = create_conn_queue(max_conn_num, svr, recv_buf_size, send_buf_size);
 
 	return svr;
 }
