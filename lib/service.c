@@ -75,14 +75,14 @@ static struct conn_queue *create_conn_queue(size_t size, struct service *s, size
 	cq->size = size;
 	cq->all_conn = allocate_connections(size);
 
+	pthread_mutex_init(&cq->lock, NULL);
+
 	for (i = 0; i < size; ++i)
 	{
 		struct connection *conn = get_conn(cq->all_conn, i);
 		init_connection(conn, FD_BASE +i, s, read_buf_size, write_buf_size);
 		push_conn(cq, conn);
 	}
-
-	pthread_mutex_init(&cq->lock, NULL);
 
 	return cq;
 }
