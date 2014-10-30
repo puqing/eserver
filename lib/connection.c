@@ -30,6 +30,7 @@ struct connection
 	struct service *s;
 	size_t read_buf_size;
 	size_t write_buf_size;
+	void *data;
 };
 
 int get_conn_fd(struct connection *conn)
@@ -51,7 +52,7 @@ void init_connection(struct connection *conn, int fd, struct service *s, size_t 
 	pthread_mutex_init(&conn->write_buf_lock, NULL);
 }
 
-static const char *process_data(struct connection *conn, const char *buf, size_t size, void *handle)
+static const char *process_data(struct connection *conn, const char *buf, size_t size)
 {
 	uint32_t len;
 
@@ -62,7 +63,7 @@ static const char *process_data(struct connection *conn, const char *buf, size_t
 			break;
 		}
 		buf += sizeof(len);
-		(*get_handler(conn->s))(conn, buf, len, handle);
+		(*get_handler(conn->s))(conn, buf, len);
 		buf += len;
 		size -= len;
 	}
@@ -86,7 +87,7 @@ static void close_connection(struct connection *conn)
 	recycle_connection(conn->s, conn);
 }
 
-void read_data(struct connection *conn, void *handle)
+void read_data(struct connection *conn)
 {
 	ssize_t count;
 
@@ -107,7 +108,7 @@ void read_data(struct connection *conn, void *handle)
 		if (count > 0) {
 			pthread_mutex_unlock(&conn->read_lock);
 			conn->read_buf_end += count;
-			const char *p = process_data(conn, conn->read_buf, conn->read_buf_end-conn->read_buf, handle);
+			const char *p = process_data(conn, conn->read_buf, conn->read_buf_end-conn->read_buf);
 			assert(p >= conn->read_buf && p <= conn->read_buf_end);
 			if (p == conn->read_buf_end) {
 				conn->read_buf_end = conn->read_buf;
@@ -242,5 +243,15 @@ struct connection *get_conn(struct connection *conn_array, size_t i)
 void set_conn_poller(struct connection *conn, struct poller *p)
 {
 	conn->p = p;
+}
+
+void set_conn_data(struct connection *conn, void *data)
+{
+	conn->data = data;
+}
+
+void *get_conn_data(struct connection *conn)
+{
+	return conn->data;
 }
 

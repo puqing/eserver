@@ -81,18 +81,21 @@ static struct conn_queue *create_conn_queue(size_t size, struct service *s, size
 	{
 		struct connection *conn = get_conn(cq->all_conn, i);
 		init_connection(conn, FD_BASE +i, s, read_buf_size, write_buf_size);
+
 		push_conn(cq, conn);
 	}
 
 	return cq;
 }
 
+#if 0
 static void destroy_conn_queue(struct conn_queue *cq)
 {
 	free(cq->free_conn);
 	free(cq->all_conn);
 	free(cq);
 }
+#endif
 
 #define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
 
@@ -102,7 +105,9 @@ static void destroy_conn_queue(struct conn_queue *cq)
 struct service
 {
 	int fd;
-	service_handler *handler;
+	message_handler *msg_handler;
+	connection_handler *conn_handler;
+	connection_close_handler *conn_close_handler;
 	struct conn_queue *cq;
 };
 
@@ -154,6 +159,7 @@ static int make_socket_non_blocking(int sfd)
 	return 0;
 }
 
+#if 0
 static int shrink_socket_send_buffer(int sfd)
 {
 	int size;
@@ -169,6 +175,7 @@ static int shrink_socket_send_buffer(int sfd)
 
 	return 0;
 }
+#endif
 
 struct connection *accept_connection(struct service *s)
 {
@@ -215,12 +222,14 @@ struct connection *accept_connection(struct service *s)
 
 	set_conn_fd(conn, infd);
 
+	s->conn_handler(conn);
+
 	return conn;
 }
 
 struct service *create_service(char *ip, int port, size_t max_conn_num,
 		size_t read_buf_size, size_t write_buf_size,
-		service_handler *sh)
+		message_handler *mh, connection_handler *ch, connection_close_handler *cch)
 {
 	int fd;
 	int res;
@@ -244,7 +253,9 @@ struct service *create_service(char *ip, int port, size_t max_conn_num,
 	svr = malloc(sizeof(struct service));
 
 	svr->fd = fd;
-	svr->handler = sh;
+	svr->msg_handler = mh;
+	svr->conn_handler = ch;
+	svr->conn_close_handler = cch;
 	svr->cq = create_conn_queue(max_conn_num, svr, read_buf_size, write_buf_size);
 
 	return svr;
@@ -252,6 +263,7 @@ struct service *create_service(char *ip, int port, size_t max_conn_num,
 
 void recycle_connection(struct service *s, struct connection *conn)
 {
+	s->conn_close_handler(conn);
 	push_conn(s->cq, conn);
 }
 
@@ -265,8 +277,8 @@ int get_service_fd(struct service *s)
 	return s->fd;
 }
 
-service_handler *get_handler(struct service *s)
+message_handler *get_handler(struct service *s)
 {
-	return s->handler;
+	return s->msg_handler;
 }
 

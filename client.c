@@ -96,7 +96,7 @@ static int connect_server(const char *server, int port)
 int send_data(int fd, char *data)
 {
 	int sr;
-	uint16_t len = (uint16_t)(rand()*1.0/RAND_MAX*strlen(data));
+	uint32_t len = (uint32_t)(rand()*1.0/RAND_MAX*strlen(data));
 
 	if (len == 0) len = 1;
 

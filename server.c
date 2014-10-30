@@ -8,7 +8,7 @@
 
 #include <esvr.h>
 
-static void process_message(struct connection *conn, const char *msg, size_t len, void *handle)
+static void process_message(struct connection *conn, const char *msg, size_t len)
 {
 	char buf[10000];
 	char *p;
@@ -29,6 +29,16 @@ static void process_message(struct connection *conn, const char *msg, size_t len
 	p += 3;
 
 	send_data(conn, buf, p-buf);
+}
+
+static void process_connection(struct connection *conn)
+{
+	printf("%lx init\n", conn);
+}
+
+static void process_connection_close(struct connection *conn)
+{
+	printf("%lx close\n", conn);
 }
 
 int main(int argc, char *argv[])
@@ -53,17 +63,19 @@ int main(int argc, char *argv[])
 
 	struct poller *p = create_poller();
 
-	struct service *s = create_service(NULL, port, 5000, 100*1024, 1024*5, &process_message);
+	struct service *s = create_service(NULL, port, 10000, 100*1024, 1024*5,
+			&process_message, &process_connection, &process_connection_close);
 
 	add_service(p, s);
 
-	s = create_service(NULL, 8889, 5000, 100*1024, 1024*5, &process_message);
+	s = create_service(NULL, 8889, 5000, 100*1024, 1024*5, &process_message,
+			&process_connection, &process_connection_close);
 
 	add_service(p, s);
 
 	int i;
 	for (i = 0; i < 8; ++i) {
-		create_worker(p, NULL);
+		create_worker(p);
 	}
 
 	while (1) {

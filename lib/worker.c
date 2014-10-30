@@ -23,7 +23,6 @@
 
 struct worker {
 	struct poller *p;
-	void *handle;
 	pthread_t tid;
 };
 
@@ -32,8 +31,6 @@ static void *work(void *data)
 	struct epoll_event *events;
 
 	struct worker *w = (struct worker*)data;
-
-//	pthread_setspecific(g_thread_key, w->handle);
 
 	int i;
 
@@ -71,7 +68,7 @@ static void *work(void *data)
 					add_connection(w->p, conn);
 				}
 			} else if (events[i].events & EPOLLIN) {
-				read_data((struct connection*)events[i].data.ptr, w->handle);
+				read_data((struct connection*)events[i].data.ptr);
 			} else {
 				assert(events[i].events & EPOLLOUT);
 				send_buffered_data(((struct connection*)events[i].data.ptr), 0);
@@ -83,11 +80,10 @@ static void *work(void *data)
 	return NULL;
 }
 
-struct worker *create_worker(struct poller *p, void *handle)
+struct worker *create_worker(struct poller *p)
 {
 	struct worker *w = malloc(sizeof(struct worker));
 	w->p = p;
-	w->handle = handle;
 	pthread_create(&w->tid, NULL, work, (void*)w);
 //	pthread_key_create(&g_thread_key, NULL);
 	syslog(LOG_INFO, "thread 0x%x created\n", (unsigned int)w->tid);
