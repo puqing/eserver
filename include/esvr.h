@@ -1,3 +1,7 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct connection;
 int send_data(struct connection *conn, const char *data, size_t num);
 
@@ -21,5 +25,10 @@ struct service *create_service(char *ip, int port, size_t max_conn_num,
 		message_handler *mh, connection_handler *ch, connection_close_handler *cch);
 
 struct worker;
-struct worker *create_worker(struct poller *p);
+struct worker *create_worker(struct poller *p, void *data);
+void *get_worker_data();
+
+#ifdef __cplusplus
+}
+#endif
 

@@ -19,11 +19,13 @@
 
 #define MAXEVENTS 64
 
-//pthread_key_t g_thread_key;
+static pthread_key_t g_key;
+static pthread_once_t g_key_once = PTHREAD_ONCE_INIT;
 
 struct worker {
 	struct poller *p;
 	pthread_t tid;
+	void *data;
 };
 
 static void *work(void *data)
@@ -32,6 +34,9 @@ static void *work(void *data)
 
 	struct worker *w = (struct worker*)data;
 
+	int res = pthread_setspecific(g_key, w->data);
+	assert(res == 0);
+
 	int i;
 
 	events = (struct epoll_event*)calloc(MAXEVENTS, sizeof *events);
@@ -39,9 +44,7 @@ static void *work(void *data)
 	while(1)
 	{
 		syslog(LOG_INFO, "Begin read poll 0x%x: %d:", (unsigned int)pthread_self(), get_poller_fd(w->p));
-//		printf("%x ((( get_specific = %x\n", pthread_self(), pthread_getspecific(g_thread_key));
 		int n = epoll_wait(get_poller_fd(w->p), events, MAXEVENTS, -1);
-//		printf("%x ))) get_specific = %x\n", pthread_self(), pthread_getspecific(g_thread_key));
 		for (i = 0; i < n; ++i) {
 			/*
 			syslog(LOG_INFO, "Read poll %x: %d :%d: %d %d", (unsigned int)pthread_self(), i,
@@ -80,14 +83,27 @@ static void *work(void *data)
 	return NULL;
 }
 
-struct worker *create_worker(struct poller *p)
+static void make_key()
+{
+	pthread_key_create(&g_key, NULL);
+}
+
+struct worker *create_worker(struct poller *p, void *data)
 {
 	struct worker *w = malloc(sizeof(struct worker));
 	w->p = p;
+	w->data = data;
+	pthread_once(&g_key_once, make_key);
 	pthread_create(&w->tid, NULL, work, (void*)w);
-//	pthread_key_create(&g_thread_key, NULL);
 	syslog(LOG_INFO, "thread 0x%x created\n", (unsigned int)w->tid);
 
 	return w;
+}
+
+void *get_worker_data()
+{
+	void *res = pthread_getspecific(g_key);
+	assert(res);
+	return res;
 }
 

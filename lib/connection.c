@@ -227,6 +227,9 @@ void set_conn_fd(struct connection *conn, int fd)
 
 	close(fd);
 
+	syslog(LOG_INFO, "[%lx:%d] Connection asigned new fd",
+			 pthread_self(), conn->fd);
+
 	clear_conn(conn);
 }
 
