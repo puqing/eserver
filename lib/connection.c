@@ -73,6 +73,7 @@ static const char *process_data(struct connection *conn, const char *buf, size_t
 
 /*
  * Note: conn->reading is intentionally untouched in this function.
+ * read/write buffers are cleaned when they are used again
  */
 static void close_connection(struct connection *conn)
 {
@@ -113,11 +114,11 @@ void read_data(struct connection *conn)
 			if (p == conn->read_buf_end) {
 				conn->read_buf_end = conn->read_buf;
 			} else if (p != conn->read_buf) {
+				// overlap! need more test.
 				memcpy(conn->read_buf, p, conn->read_buf_end - p);
 				conn->read_buf_end -= p-conn->read_buf;
 			}
 		} else if (count == 0) {
-
 			syslog(LOG_INFO, "[%lx:%lx:%d:] Remote closed\n",
 				(uint64_t)conn, (uint64_t)pthread_self(), conn->fd);
 			close_connection(conn);
@@ -214,6 +215,7 @@ int send_data(struct connection *conn, const char *data, size_t num)
 static void clear_conn(struct connection *conn)
 {
 	conn->reading = 0;
+	conn->read_buf_end = conn->read_buf;
 	conn->write_buf_end = conn->write_buf;
 }
 
