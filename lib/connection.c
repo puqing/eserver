@@ -10,6 +10,7 @@
 
 #include <esvr.h>
 
+#include "connmgr.h"
 #include "connection.h"
 #include "service.h"
 #include "poller.h"
@@ -27,7 +28,10 @@ struct connection
 	pthread_mutex_t read_lock;
 	pthread_mutex_t write_buf_lock;
 	struct poller *p;
-	struct service *s;
+//	struct service *s;
+	message_handler *msg_handler;
+	connection_close_handler *close_handler;
+	struct conn_queue *cq;
 	size_t read_buf_size;
 	size_t write_buf_size;
 	void *data;
@@ -38,10 +42,12 @@ int get_conn_fd(struct connection *conn)
 	return conn->fd;
 }
 
-void init_connection(struct connection *conn, int fd, struct service *s, size_t read_buf_size, size_t write_buf_size)
+void init_connection(struct connection *conn, int fd, size_t read_buf_size, size_t write_buf_size, struct conn_queue *cq)
 {
 	conn->fd = fd;
-	conn->s = s;
+	conn->cq = cq;
+	conn->msg_handler = NULL;
+	conn->close_handler = NULL;
 	conn->reading = 0;
 	conn->read_buf_size = read_buf_size;
 	conn->write_buf_size = write_buf_size;
@@ -63,7 +69,8 @@ static const char *process_data(struct connection *conn, const char *buf, size_t
 			break;
 		}
 		buf += sizeof(len);
-		(*get_handler(conn->s))(conn, buf, len);
+//		(*get_handler(conn->s))(conn, buf, len);
+		(*conn->msg_handler)(conn, buf, len);
 		buf += len;
 		size -= len;
 	}
@@ -85,7 +92,8 @@ static void close_connection(struct connection *conn)
 
 	syslog(LOG_INFO, "[%lx:%lx:%d:] fd closed",
 		(uint64_t)conn, (uint64_t)pthread_self(), conn->fd);
-	recycle_connection(conn->s, conn);
+	conn->close_handler(conn);
+	push_conn(conn->cq, conn);
 }
 
 void read_data(struct connection *conn)
@@ -196,7 +204,7 @@ int send_data(struct connection *conn, const char *data, size_t num)
 {
 	int required_size = conn->write_buf_end - conn->write_buf + num;
 	if (required_size > conn->write_buf_size) {
-		syslog(LOG_ERR, "write buffer overflow, size required: %d", required_size);
+		syslog(LOG_ERR, "write buffer overflow, %d > %d", required_size, conn->write_buf_size);
 		return -1;
 	}
 
@@ -233,6 +241,14 @@ void set_conn_fd(struct connection *conn, int fd)
 			 pthread_self(), conn->fd);
 
 	clear_conn(conn);
+}
+
+void set_conn_handlers(struct connection *conn,
+	message_handler *msg_handler,
+	connection_close_handler *close_handler)
+{
+	conn->msg_handler = msg_handler;
+	conn->close_handler = close_handler;
 }
 
 struct connection *allocate_connections(size_t num)

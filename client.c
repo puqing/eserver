@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include <syslog.h>
 
 #define PERROR(s) printf("%s:%d: %s: %s\n", __FILE__, __LINE__, s, strerror(errno))
 
@@ -48,7 +49,7 @@ static int connect_server(const char *server, int port)
 	int sfd;
 	struct sockaddr_in addr;
 	int res;
-	int on = 1;
+//	int on = 1;
 
 	sfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (sfd == -1) {
@@ -56,6 +57,7 @@ static int connect_server(const char *server, int port)
 		return -1;
 	}
 
+#if 0
 	res = setsockopt(sfd, SOL_SOCKET,
 			SO_REUSEADDR,
 			(const char *) &on, sizeof(on));
@@ -76,6 +78,7 @@ static int connect_server(const char *server, int port)
 	{
 		perror("setsockopt(...,SO_LINGER,...)");
 	}
+#endif
 
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(port);
@@ -87,7 +90,7 @@ static int connect_server(const char *server, int port)
 		return -1;
 	}
 	
-	shrink_socket_send_buffer(sfd);
+//	shrink_socket_send_buffer(sfd);
 
 	return sfd;
 	
@@ -114,18 +117,38 @@ int send_data(int fd, char *data)
 	
 }
 
+void print_local_port(int fd);
+
 int recv_data(int fd, char *buf, size_t size)
 {
 	int count;
-	uint16_t len;
-	uint16_t data_len;
+	uint32_t len;
+	uint32_t data_len;
 
 	data_len = 0;
 
-	read(fd, &len, sizeof len);
+	printf("JJJ\n");
+	int res = read(fd, &len, sizeof len);
+	if (res < 0) {
+		print_local_port(fd);
+		printf("%d\n", len);
+		fflush(stdout);
+		perror("read");
+		abort();
+	}
+
+	printf("JKK\n");
 
 	while (data_len < len) {
+//		printf("[%lx:", pthread_self());
+//		printf("%d]d_len, len = %d, %d\n", fd, data_len, len); // =0
+		printf("[%lx:%d] d_len, len = %d, %d\n", pthread_self(), fd, data_len, len); // no 0
 		count = read(fd, buf, len);
+		if (count == 0) {
+			printf("read returns 0\n");
+			print_local_port(fd);
+			abort();
+		}
 		if (count < 0) {
 			perror("recv");
 			abort();
@@ -167,29 +190,40 @@ void print_local_port(int fd)
 		printf("Cannot print local host/port info, error returned: %d\n", res);
 		abort();
 	}
+
+	res = getpeername(fd, &addr, &len);
+	res = getnameinfo(&addr, len,
+			hbuf, sizeof hbuf,
+			sbuf, sizeof sbuf,
+			NI_NUMERICHOST | NI_NUMERICSERV);
+	if (res == 0) {
+		printf("[%x:%d] (remotehost=%s, remoteport=%s)\n",
+				 (unsigned int)pthread_self(), fd, hbuf, sbuf);
+	} else {
+		printf("Cannot print local host/port info, error returned: %d\n", res);
+		abort();
+	}
 }
 
 void *doit(void *str)
 {
 	int sfd, count;
-	char buf[10240];
+	char buf[512];
+
+	sfd = connect_server(ip_addr, 8877);
+	if (sfd == -1) {
+		fprintf(stderr, "connect error\n");
+		return NULL;
+	}
 
 	while (gStop == 0) {
-		sfd = connect_server(ip_addr, 8888);
-		if (sfd == -1) {
-			printf("Will connect again.\n");
-//			sleep(rand()*1.0/RAND_MAX*30);
-			sleep(10);
-			continue;
-		}
-
 		__sync_add_and_fetch(&conn_total, 1);
 
 		print_local_port(sfd);
 
 		count = send_data(sfd, (char*)str);
 		if (count < 0) {
-			printf("Send error\n");
+			fprintf(stderr, "Send error\n");
 			close(sfd);
 			sleep(30);
 			continue;
@@ -203,8 +237,6 @@ void *doit(void *str)
 		buf[count] = '\0';
 		printf("[%x:%d] %d: %s\n", (unsigned int)pthread_self(),
 				sfd, count, buf);
-
-		close(sfd);
 
 	}
 
@@ -227,7 +259,7 @@ void signal_handler(int sig)
 	gStop = 1;
 }
 
-#define THREADNUM 8000
+#define THREADNUM 10000
 
 int main(int argc, char *argv[])
 {
@@ -251,7 +283,7 @@ int main(int argc, char *argv[])
 	for (i = 0; i < THREADNUM; ++i) {
 		int res = pthread_create(&tid[i], NULL, &doit, argv[2]);
 		if (res != 0) {
-			printf("%d: %d\n", i, res);
+			printf("thread create failed %d: %d\n", i, res);
 			return res;
 		}
 	}

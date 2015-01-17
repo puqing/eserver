@@ -14,8 +14,8 @@ static void process_message(struct connection *conn, const char *msg, size_t len
 	char *p;
 	int i;
 
-	*(uint16_t*)buf = 30*len+3+3;
-	p = buf + sizeof(uint16_t);
+	*(uint32_t*)buf = 30*len+3+3;
+	p = buf + sizeof(uint32_t);
 
 	p[0] = 0;
 	strcpy(p, "^^^");
@@ -33,12 +33,12 @@ static void process_message(struct connection *conn, const char *msg, size_t len
 
 static void process_connection(struct connection *conn)
 {
-	printf("%lx init\n", conn);
+//	printf("%lx init\n", conn);
 }
 
 static void process_connection_close(struct connection *conn)
 {
-	printf("%lx close\n", conn);
+//	printf("%lx close\n", conn);
 }
 
 int main(int argc, char *argv[])
@@ -57,25 +57,25 @@ int main(int argc, char *argv[])
 
 	signal(SIGPIPE, SIG_IGN);
 
-	openlog("gserver", 0, LOG_USER);
+	openlog(argv[0], LOG_PID, LOG_USER);
 
 	syslog(LOG_INFO, "server start");
 
 	struct poller *p = create_poller();
 
-	struct service *s = create_service(NULL, port, 10000, 100*1024, 1024*5,
+	struct service *s = create_service(NULL, port, 20000, 1*1024, 1024*1,
 			&process_message, &process_connection, &process_connection_close);
 
 	add_service(p, s);
 
-	s = create_service(NULL, 8889, 5000, 100*1024, 1024*5, &process_message,
-			&process_connection, &process_connection_close);
+//	s = create_service(NULL, 8889, 10000, 100*1024, 1024*5, &process_message,
+//			&process_connection, &process_connection_close);
 
-	add_service(p, s);
+//	add_service(p, s);
 
-	int i;
-	for (i = 0; i < 8; ++i) {
-		create_worker(p);
+	long i;
+	for (i = 0; i < 4; ++i) {
+		create_worker(p, (void*)i);
 	}
 
 	while (1) {

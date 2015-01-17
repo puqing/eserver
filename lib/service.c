@@ -13,89 +13,10 @@
 
 #include <esvr.h>
 
+#include "connmgr.h"
 #include "connection.h"
 #include "service.h"
-
-/***************************
-*    Connection Manager    *
-***************************/
-struct conn_queue
-{
-	struct connection **free_conn;
-	unsigned int head;
-	unsigned int tail;
-
-	unsigned int mask;
-	pthread_mutex_t lock;
-
-	struct connection *all_conn;
-//	size_t number;
-	size_t size;
-};
-
-#define FD_BASE 1000
-
-static void push_conn(struct conn_queue *cq, struct connection *conn)
-{
-	pthread_mutex_lock(&cq->lock);
-	cq->free_conn[cq->tail & cq->mask]= conn;
-	++cq->tail;
-	pthread_mutex_unlock(&cq->lock);
-}
-
-static struct connection *pop_conn(struct conn_queue *cq)
-{
-	struct connection *conn;
-
-	pthread_mutex_lock(&cq->lock);
-	if (cq->head == cq->tail) {
-		conn = NULL;
-	} else {
-		conn = cq->free_conn[cq->head & cq->mask];
-		++cq->head;
-	}
-	pthread_mutex_unlock(&cq->lock);
-
-	return conn;
-}
-
-static struct conn_queue *create_conn_queue(size_t size, struct service *s, size_t read_buf_size, size_t write_buf_size)
-{
-	unsigned int cap;
-	int i;
-
-	struct conn_queue *cq = malloc(sizeof(struct conn_queue));
-
-	cap = 1;
-	while (cap <= size) cap <<= 1;
-	cq->mask = cap - 1;
-	cq->free_conn = malloc(sizeof(struct connection*) * cap);
-	cq->head = cq->tail = 0;
-
-	cq->size = size;
-	cq->all_conn = allocate_connections(size);
-
-	pthread_mutex_init(&cq->lock, NULL);
-
-	for (i = 0; i < size; ++i)
-	{
-		struct connection *conn = get_conn(cq->all_conn, i);
-		init_connection(conn, FD_BASE +i, s, read_buf_size, write_buf_size);
-
-		push_conn(cq, conn);
-	}
-
-	return cq;
-}
-
-#if 0
-static void destroy_conn_queue(struct conn_queue *cq)
-{
-	free(cq->free_conn);
-	free(cq->all_conn);
-	free(cq);
-}
-#endif
+#include "connmgr.h"
 
 #define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
 
@@ -221,6 +142,8 @@ struct connection *accept_connection(struct service *s)
 	assert(conn != NULL);
 
 	set_conn_fd(conn, infd);
+	set_conn_handlers(conn, s->msg_handler, \
+			s->conn_close_handler);
 
 	s->conn_handler(conn);
 
@@ -243,7 +166,7 @@ struct service *create_service(char *ip, int port, size_t max_conn_num,
 	if (res == -1)
 		abort ();
 
-	res = listen(fd, SOMAXCONN);
+	res = listen(fd, 8192);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("listen");
@@ -256,20 +179,15 @@ struct service *create_service(char *ip, int port, size_t max_conn_num,
 	svr->msg_handler = mh;
 	svr->conn_handler = ch;
 	svr->conn_close_handler = cch;
-	svr->cq = create_conn_queue(max_conn_num, svr, read_buf_size, write_buf_size);
+	svr->cq = create_conn_queue(max_conn_num, read_buf_size, write_buf_size);
 
 	return svr;
 }
 
-void recycle_connection(struct service *s, struct connection *conn)
-{
-	s->conn_close_handler(conn);
-	push_conn(s->cq, conn);
-}
-
 size_t get_conn_num(struct service *s)
 {
-	return s->cq->size - (s->cq->tail - s->cq->head);
+	return get_active_conn_num(s->cq);
+//	return s->cq->size - (s->cq->tail - s->cq->head);
 }
 
 int get_service_fd(struct service *s)

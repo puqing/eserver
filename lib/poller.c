@@ -14,6 +14,7 @@
 
 #include <esvr.h>
 
+#include "connmgr.h"
 #include "connection.h"
 #include "service.h"
 #include "poller.h"

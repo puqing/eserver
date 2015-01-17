@@ -12,6 +12,7 @@
 
 #include <esvr.h>
 
+#include "connmgr.h"
 #include "connection.h"
 #include "service.h"
 #include "poller.h"
@@ -43,7 +44,7 @@ static void *work(void *data)
 
 	while(1)
 	{
-		syslog(LOG_INFO, "Begin read poll 0x%x: %d:", (unsigned int)pthread_self(), get_poller_fd(w->p));
+		syslog(LOG_INFO, "Begin read poll 0x%lx: %d:", pthread_self(), get_poller_fd(w->p));
 		int n = epoll_wait(get_poller_fd(w->p), events, MAXEVENTS, -1);
 		for (i = 0; i < n; ++i) {
 			/*
