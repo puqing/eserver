@@ -1,4 +1,4 @@
-EXE=server client client1
+EXE=server client client_th
 LIB=lib/libesvr.a
 CFLAGS=-pthread -g -Wall -I ./include
 LDFLAGS=-L./lib -lesvr -pthread -static
@@ -16,7 +16,7 @@ server: server.o $(LIB)
 client: client.o
 	gcc $^ -o $@ $(LDFLAGS)
 
-client1: client1.o
+client_th: client_th.o
 	gcc $^ -o $@ $(LDFLAGS)
 
 .c.o:
