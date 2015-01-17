@@ -28,17 +28,18 @@ static void process_message(struct connection *conn, const char *msg, size_t len
 	strcpy(p, "$$$");
 	p += 3;
 
-	send_data(conn, buf, p-buf);
-}
-
-static void process_connection(struct connection *conn)
-{
-//	printf("%lx init\n", conn);
+	sendout(conn, buf, p-buf);
 }
 
 static void process_connection_close(struct connection *conn)
 {
 //	printf("%lx close\n", conn);
+}
+
+static void process_connection(struct connection *conn)
+{
+	set_conn_handlers(conn, process_message,
+			process_connection_close);
 }
 
 int main(int argc, char *argv[])
@@ -63,15 +64,13 @@ int main(int argc, char *argv[])
 
 	struct poller *p = create_poller();
 
-	struct service *s = create_service(NULL, port, 20000, 1*1024, 1024*1,
-			&process_message, &process_connection, &process_connection_close);
+	struct conn_queue *cq = create_conn_queue(1000,
+			20000, 1024, 1024);
+
+	struct service *s = create_service(NULL, port, cq,
+		&process_connection);
 
 	add_service(p, s);
-
-//	s = create_service(NULL, 8889, 10000, 100*1024, 1024*5, &process_message,
-//			&process_connection, &process_connection_close);
-
-//	add_service(p, s);
 
 	long i;
 	for (i = 0; i < 4; ++i) {
@@ -79,7 +78,7 @@ int main(int argc, char *argv[])
 	}
 
 	while (1) {
-		log_conn_num(p);
+		log_conn_num(cq);
 		sleep(1);
 	}
 

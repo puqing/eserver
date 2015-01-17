@@ -115,11 +115,3 @@ int rearm_out(struct poller *p, struct connection *conn, int rearm)
 	}
 }
 
-void log_conn_num(struct poller *p)
-{
-	int i;
-	for (i = 0; i < p->svr_num; ++i) {
-		syslog(LOG_INFO, "Concurrent connection number (service %d)= %ld\n", i, get_conn_num(p->services[i]));
-	}
-}
-

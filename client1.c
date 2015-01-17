@@ -4,7 +4,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <assert.h>
-#include <pthread.h>
 #include <unistd.h>
 #include <errno.h>
 #include <arpa/inet.h>
@@ -28,8 +27,8 @@ static void process_message(struct connection *conn, const char *msg, size_t len
 	len = rand()*1.0/RAND_MAX*strlen(data);
 	char buf[512];
 	*(uint32_t*)buf = len;
-	send_data(conn, buf, 4);
-	send_data(conn, data, len);
+	sendout(conn, buf, 4);
+	sendout(conn, data, len);
 
 	__sync_add_and_fetch(&conn_total, 1);
 }
@@ -100,12 +99,14 @@ void signal_handler(int sig)
 }
 
 #define THREADNUM 4
+#define CONN_NUM  10000
 
 int main(int argc, char *argv[])
 {
 	openlog(argv[0], LOG_PID, LOG_USER);
 
-	struct conn_queue *cq = create_conn_queue(20000, 512, 512);
+	struct conn_queue *cq = create_conn_queue(1000,
+			20000, 512, 512);
 
 	struct poller *p = create_poller();
 
@@ -114,7 +115,7 @@ int main(int argc, char *argv[])
 	signal(SIGINT, signal_handler);
 
 	long i;
-	for (i = 0; i < 10000; ++i) {
+	for (i = 0; i < CONN_NUM; ++i) {
 		int sfd = connect_server("127.0.0.1", 8877);
 		assert(sfd != -1);
 
@@ -127,8 +128,8 @@ int main(int argc, char *argv[])
 
 		char buf[512];
 		*(uint32_t*)buf = 5;
-		send_data(conn, buf, 4);
-		send_data(conn, "Hello", 5);
+		sendout(conn, buf, 4);
+		sendout(conn, "Hello", 5);
 	}
 
 	for (i = 0; i < THREADNUM; ++i) {
@@ -138,7 +139,7 @@ int main(int argc, char *argv[])
 	time(&start_time);
 
 	while (gStop == 0) {
-		log_conn_num(p);
+		log_conn_num(cq);
 		sleep(1);
 	}
 

@@ -30,8 +30,6 @@ struct conn_queue
 	size_t size;
 };
 
-#define FD_BASE 1000
-
 void push_conn(struct conn_queue *cq, struct connection *conn)
 {
 	pthread_mutex_lock(&cq->lock);
@@ -56,7 +54,7 @@ struct connection *pop_conn(struct conn_queue *cq)
 	return conn;
 }
 
-struct conn_queue *create_conn_queue(size_t size, size_t read_buf_size, size_t write_buf_size)
+struct conn_queue *create_conn_queue(int fd_base, size_t size, size_t read_buf_size, size_t write_buf_size)
 {
 	unsigned int cap;
 	int i;
@@ -77,7 +75,7 @@ struct conn_queue *create_conn_queue(size_t size, size_t read_buf_size, size_t w
 	for (i = 0; i < size; ++i)
 	{
 		struct connection *conn = get_conn(cq->all_conn, i);
-		init_connection(conn, FD_BASE +i, read_buf_size, write_buf_size, cq);
+		init_connection(conn, fd_base +i, read_buf_size, write_buf_size, cq);
 
 		push_conn(cq, conn);
 	}
@@ -88,6 +86,12 @@ struct conn_queue *create_conn_queue(size_t size, size_t read_buf_size, size_t w
 size_t get_active_conn_num(struct conn_queue *cq)
 {
 	return cq->size - (cq->tail - cq->head);
+}
+
+void log_conn_num(struct conn_queue *cq)
+{
+	int i;
+	syslog(LOG_INFO, "Concurrent connection number (service %d)= %ld\n", i, get_active_conn_num(cq));
 }
 
 #if 0

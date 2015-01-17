@@ -200,11 +200,11 @@ void send_buffered_data(struct connection *conn, int direct_send)
 
 }
 
-int send_data(struct connection *conn, const char *data, size_t num)
+int sendout(struct connection *conn, const char *data, size_t num)
 {
-	int required_size = conn->write_buf_end - conn->write_buf + num;
+	size_t required_size = conn->write_buf_end - conn->write_buf + num;
 	if (required_size > conn->write_buf_size) {
-		syslog(LOG_ERR, "write buffer overflow, %d > %d", required_size, conn->write_buf_size);
+		syslog(LOG_ERR, "write buffer overflow, %ld > %ld", required_size, conn->write_buf_size);
 		return -1;
 	}
 

@@ -26,9 +26,7 @@
 struct service
 {
 	int fd;
-	message_handler *msg_handler;
 	connection_handler *conn_handler;
-	connection_close_handler *conn_close_handler;
 	struct conn_queue *cq;
 };
 
@@ -142,17 +140,13 @@ struct connection *accept_connection(struct service *s)
 	assert(conn != NULL);
 
 	set_conn_fd(conn, infd);
-	set_conn_handlers(conn, s->msg_handler, \
-			s->conn_close_handler);
 
 	s->conn_handler(conn);
 
 	return conn;
 }
 
-struct service *create_service(char *ip, int port, size_t max_conn_num,
-		size_t read_buf_size, size_t write_buf_size,
-		message_handler *mh, connection_handler *ch, connection_close_handler *cch)
+struct service *create_service(char *ip, int port, struct conn_queue *cq, connection_handler *ch)
 {
 	int fd;
 	int res;
@@ -166,7 +160,7 @@ struct service *create_service(char *ip, int port, size_t max_conn_num,
 	if (res == -1)
 		abort ();
 
-	res = listen(fd, 8192);
+	res = listen(fd, SOMAXCONN);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("listen");
@@ -176,10 +170,8 @@ struct service *create_service(char *ip, int port, size_t max_conn_num,
 	svr = malloc(sizeof(struct service));
 
 	svr->fd = fd;
-	svr->msg_handler = mh;
 	svr->conn_handler = ch;
-	svr->conn_close_handler = cch;
-	svr->cq = create_conn_queue(max_conn_num, read_buf_size, write_buf_size);
+	svr->cq = cq;
 
 	return svr;
 }
@@ -187,16 +179,10 @@ struct service *create_service(char *ip, int port, size_t max_conn_num,
 size_t get_conn_num(struct service *s)
 {
 	return get_active_conn_num(s->cq);
-//	return s->cq->size - (s->cq->tail - s->cq->head);
 }
 
 int get_service_fd(struct service *s)
 {
 	return s->fd;
-}
-
-message_handler *get_handler(struct service *s)
-{
-	return s->msg_handler;
 }
 
