@@ -90,8 +90,7 @@ size_t get_active_conn_num(struct conn_queue *cq)
 
 void log_conn_num(struct conn_queue *cq)
 {
-	int i;
-	syslog(LOG_INFO, "Concurrent connection number (service %d)= %ld\n", i, get_active_conn_num(cq));
+	syslog(LOG_INFO, "Concurrent connection number = %ld\n", get_active_conn_num(cq));
 }
 
 #if 0
