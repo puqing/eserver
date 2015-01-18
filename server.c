@@ -42,6 +42,8 @@ static void process_connection(struct connection *conn)
 			process_connection_close);
 }
 
+#define THREADNUM 4
+
 int main(int argc, char *argv[])
 {
 
@@ -49,10 +51,10 @@ int main(int argc, char *argv[])
 
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s port\n", argv[0]);
-		abort();
+		exit(EXIT_FAILURE);
 	}
 
-	sscanf(argv[1], "%d", &port);
+	port = atoi(argv[1]);
 
 //	daemon(0, 0);
 
@@ -73,7 +75,7 @@ int main(int argc, char *argv[])
 	add_service(p, s);
 
 	long i;
-	for (i = 0; i < 4; ++i) {
+	for (i = 0; i < THREADNUM; ++i) {
 		create_worker(p, (void*)i);
 	}
 

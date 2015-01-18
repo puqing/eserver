@@ -104,20 +104,31 @@ void signal_handler(int sig)
 
 int main(int argc, char *argv[])
 {
+	char *ip_addr;
+	short port;
+
+	if (argc != 3) {
+		fprintf(stderr, "Usage: %s ip_addr port\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+
+	ip_addr = argv[1];
+	port = atoi(argv[2]);
+
 	openlog(argv[0], LOG_PID, LOG_USER);
+
+	signal(SIGPIPE, SIG_IGN);
+
+	signal(SIGINT, signal_handler);
 
 	struct conn_queue *cq = create_conn_queue(1000,
 			20000, 512, 512);
 
 	struct poller *p = create_poller();
 
-	signal(SIGPIPE, SIG_IGN);
-
-	signal(SIGINT, signal_handler);
-
 	long i;
 	for (i = 0; i < CONN_NUM; ++i) {
-		int sfd = connect_server("127.0.0.1", 8877);
+		int sfd = connect_server(ip_addr, port);
 		assert(sfd != -1);
 
 		struct connection *conn = pop_conn(cq);
