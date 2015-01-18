@@ -28,8 +28,6 @@ struct poller
 	unsigned int svr_num;
 };
 
-#define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
-
 struct poller *create_poller()
 {
 	struct poller *p = malloc(sizeof(struct poller));
@@ -102,7 +100,7 @@ int rearm_out(struct poller *p, struct connection *conn, int rearm)
 	struct epoll_event event;
 	int res;
 
-	syslog(LOG_INFO, "[%lx:%lx:%d:] Rearm out %d", (uint64_t)conn, (uint64_t)pthread_self(), get_conn_fd(conn), rearm);
+	LOG_CONN(LOG_DEBUG, "Rearm out %d", rearm);
 	event.data.ptr = conn;
 	event.events = EPOLLET | EPOLLIN | (rearm?EPOLLOUT:0);
 	res = epoll_ctl(p->fd, EPOLL_CTL_MOD, get_conn_fd(conn), &event);

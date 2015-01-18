@@ -18,8 +18,6 @@
 #include "service.h"
 #include "connmgr.h"
 
-#define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
-
 /**********************
  *   service           *
  *********************/
@@ -126,7 +124,7 @@ struct connection *accept_connection(struct service *s)
 			NI_NUMERICHOST | NI_NUMERICSERV);
 	if (res == 0)
 	{
-		syslog(LOG_INFO, "[%x:%d] Accepted connection"
+		syslog(LOG_DEBUG, "[%x:%d] Accepted connection"
 				"(host=%s, port=%s)\n",
 				 (unsigned int)pthread_self(), infd, hbuf, sbuf);
 	}

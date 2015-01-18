@@ -15,8 +15,6 @@
 #include "service.h"
 #include "poller.h"
 
-#define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
-
 struct connection
 {
 	int fd;
@@ -85,13 +83,11 @@ static const char *process_data(struct connection *conn, const char *buf, size_t
 static void close_connection(struct connection *conn)
 {
 	if (close(conn->fd) == -1) {
-		syslog(LOG_INFO, "[%lx:%lx:%d:] close: %s",
-			(uint64_t)conn, (uint64_t)pthread_self(), conn->fd, strerror(errno));
+		LOG_CONN(LOG_ERR, "close: %s", strerror(errno));
 		return;
 	}
 
-	syslog(LOG_INFO, "[%lx:%lx:%d:] fd closed",
-		(uint64_t)conn, (uint64_t)pthread_self(), conn->fd);
+	LOG_CONN(LOG_ERR, "fd closed");
 	conn->close_handler(conn);
 	push_conn(conn->cq, conn);
 }
@@ -112,7 +108,7 @@ void read_data(struct connection *conn)
 	do {
 		pthread_mutex_lock(&conn->read_lock);
 		count = read(conn->fd, conn->read_buf_end, conn->read_buf_size-(conn->read_buf_end-conn->read_buf));
-		syslog(LOG_INFO, "[%lx:%lx:%d:] %ld bytes read", (uint64_t)conn, (uint64_t)pthread_self(), conn->fd, count);
+		LOG_CONN(LOG_DEBUG, "%ld bytes read", count);
 
 		if (count > 0) {
 			pthread_mutex_unlock(&conn->read_lock);
@@ -127,24 +123,21 @@ void read_data(struct connection *conn)
 				conn->read_buf_end -= p-conn->read_buf;
 			}
 		} else if (count == 0) {
-			syslog(LOG_INFO, "[%lx:%lx:%d:] Remote closed\n",
-				(uint64_t)conn, (uint64_t)pthread_self(), conn->fd);
+			LOG_CONN(LOG_DEBUG, "Remote closed");
 			close_connection(conn);
 			pthread_mutex_unlock(&conn->read_lock);
 		} else {
 			assert(count == -1);
 			conn->reading = 0;
 			pthread_mutex_unlock(&conn->read_lock);
-			SYSLOG_ERROR("read");
+			LOG_CONN(LOG_DEBUG, "read returns -1");
 			if (errno == EBADF) {
-				syslog(LOG_ERR, "[%lx:%lx:%d:] Reading a closed fd\n",
-					(uint64_t)conn, (uint64_t)pthread_self(), conn->fd);
-			} else if (errno != EAGAIN && errno != EWOULDBLOCK) {
-				syslog(LOG_ERR, "[%lx:%lx:%d:] read: %s\n",
-						(uint64_t)conn, (uint64_t)pthread_self(), conn->fd,
-						strerror(errno));
+				LOG_CONN(LOG_ERR, "Reading a closed fd");
 				close_connection(conn);
-			}
+			} else if (errno != EAGAIN && errno != EWOULDBLOCK) {
+				LOG_CONN(LOG_ERR, "read: %s", strerror(errno));
+				close_connection(conn);
+			} // EAGAIN || EWOULDBLOCK, quit the loop.
 		}
 	} while (count >0);
 }
@@ -172,8 +165,7 @@ void send_buffered_data(struct connection *conn, int direct_send)
 
 		if (res > 0) {
 			assert(res <= conn->write_buf_end - conn->write_buf);
-			syslog(LOG_INFO, "[%lx:%lx:%d:] %d bytes sent",
-				(uint64_t)conn, (uint64_t)pthread_self(), conn->fd, res);
+			LOG_CONN(LOG_DEBUG, "%d bytes sent", res);
 
 			if (res < conn->write_buf_end-conn->write_buf) {
 				memcpy(conn->write_buf, conn->write_buf+res, conn->write_buf_end-conn->write_buf-res);
@@ -189,14 +181,12 @@ void send_buffered_data(struct connection *conn, int direct_send)
 			pthread_mutex_unlock(&conn->write_buf_lock);
 			SYSLOG_ERROR("write");
 			if (errno != EAGAIN && errno != EWOULDBLOCK) {
-				syslog(LOG_ERR, "[%lx:%lx:%d:] Error other than EAGAIN encountered\n",
-					(uint64_t)conn, (uint64_t)pthread_self(), conn->fd);
+				LOG_CONN(LOG_ERR, "Error other than EAGAIN encountered");
 			}
 		}
 	} while (res > 0);
 
-	syslog(LOG_INFO, "[%lx:%lx:%d:] total %d bytes sent",
-		(uint64_t)conn, (uint64_t)pthread_self(), conn->fd, total);
+	LOG_CONN(LOG_DEBUG, "total %d bytes sent", total);
 
 }
 
@@ -204,7 +194,7 @@ int sendout(struct connection *conn, const char *data, size_t num)
 {
 	size_t required_size = conn->write_buf_end - conn->write_buf + num;
 	if (required_size > conn->write_buf_size) {
-		syslog(LOG_ERR, "write buffer overflow, %ld > %ld", required_size, conn->write_buf_size);
+		LOG_CONN(LOG_ERR, "write buffer overflow, %ld > %ld", required_size, conn->write_buf_size);
 		return -1;
 	}
 
@@ -213,8 +203,7 @@ int sendout(struct connection *conn, const char *data, size_t num)
 	conn->write_buf_end += num;
 	pthread_mutex_unlock(&conn->write_buf_lock);
 
-	syslog(LOG_INFO, "[%lx:%lx:%d:] %ld bytes put in write buffer",
-		(uint64_t)conn, (uint64_t)pthread_self(), conn->fd, num);
+	LOG_CONN(LOG_DEBUG, "%ld bytes put in write buffer", num);
 	send_buffered_data(conn, 1);
 
 	return 0;
@@ -237,8 +226,7 @@ void set_conn_fd(struct connection *conn, int fd)
 
 	close(fd);
 
-	syslog(LOG_INFO, "[%lx:%d] Connection asigned new fd",
-			 pthread_self(), conn->fd);
+	LOG_CONN(LOG_DEBUG, "Connection asigned new fd");
 
 	clear_conn(conn);
 }

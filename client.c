@@ -10,6 +10,7 @@
 #include <signal.h>
 #include <syslog.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include <esvr.h>
 

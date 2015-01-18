@@ -44,11 +44,11 @@ static void *work(void *data)
 
 	while(1)
 	{
-		syslog(LOG_INFO, "Begin read poll 0x%lx: %d:", pthread_self(), get_poller_fd(w->p));
+		syslog(LOG_DEBUG, "Begin read poll 0x%lx: %d:", pthread_self(), get_poller_fd(w->p));
 		int n = epoll_wait(get_poller_fd(w->p), events, MAXEVENTS, -1);
 		for (i = 0; i < n; ++i) {
 			/*
-			syslog(LOG_INFO, "Read poll %x: %d :%d: %d %d", (unsigned int)pthread_self(), i,
+			syslog(LOG_DEBUG, "Read poll %x: %d :%d: %d %d", (unsigned int)pthread_self(), i,
 			(events[i].data.ptr==w->p)?get_sfd(w->p):get_fd((struct connection*)events[i].data.ptr),
 					events[i].events & EPOLLIN, events[i].events & EPOLLOUT);*/ // TODO
 		}
@@ -59,9 +59,9 @@ static void *work(void *data)
 				!((events[i].events & EPOLLIN) || (events[i].events & EPOLLOUT)))
 			{
 				if (find_service(w->p, events[i].data.ptr)) {
-					syslog(LOG_INFO, "%s:%d: events = 0x%x", "epoll error on listening fd", get_service_fd((struct service*)events[i].data.ptr), events[i].events);
+					syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on listening fd", get_service_fd((struct service*)events[i].data.ptr), events[i].events);
 				} else {
-					syslog(LOG_INFO, "%s:%d: events = 0x%x", "epoll error on working fd", get_conn_fd((struct connection*)events[i].data.ptr), events[i].events);
+					syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on working fd", get_conn_fd((struct connection*)events[i].data.ptr), events[i].events);
 //					close_connection((struct connection*)events[i].data.ptr);
 				}
 			}
@@ -96,7 +96,7 @@ struct worker *create_worker(struct poller *p, void *data)
 	w->data = data;
 	pthread_once(&g_key_once, make_key);
 	pthread_create(&w->tid, NULL, work, (void*)w);
-	syslog(LOG_INFO, "thread 0x%x created\n", (unsigned int)w->tid);
+	syslog(LOG_DEBUG, "thread 0x%x created\n", (unsigned int)w->tid);
 
 	return w;
 }
