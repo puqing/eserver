@@ -26,6 +26,7 @@ static void process_message(struct connection *conn, const char *msg, size_t len
 
 	char *data = "Hello";
 	len = rand()*1.0/RAND_MAX*strlen(data);
+	if (len == 0) len = 1;
 	char buf[512];
 	*(uint32_t*)buf = len;
 	sendout(conn, buf, 4);
