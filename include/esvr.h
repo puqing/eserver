@@ -2,18 +2,19 @@
 extern "C" {
 #endif
 
+#include <sys/types.h>
+
 /*
- * Connection objects can be used at both server side
- * and client side.  They are pre-allocated in a container, the
- * `conn_queue object'.
+ * Connections are pre-allocated in a container, the
+ * `conn_queue'.
  * Each connection object has a uniq and fixed fd number.
  * Newly established connections are copied to the object's fd
  * number using dup2(2), and its own fd will be close(2)d after
  * that.
  * When a connection sends out data, it firstly puts the data
  * into a buffer, then tries to send it. If sending fails with
- * EAGAIN, it will wait until the fd is available for sending,
- * and send again.
+ * EAGAIN, it will be delaied until the fd is available for
+ * sending.
  * Each connection object has two call-back functions, one for
  * processing messages and another for clearing up resources.
  * Connection object can be asigned a user-data, which is
@@ -49,8 +50,7 @@ struct conn_queue *create_conn_queue(int fd_base,
 		size_t size,
 		size_t read_buf_size,
 		size_t write_buf_size);
-struct connection *pop_conn(struct conn_queue *cq);
-void push_conn(struct conn_queue *cq, struct connection *conn);
+struct connection *get_conn_set_fd(struct conn_queue *cq, int fd);
 void log_conn_num(struct conn_queue *cq);
 
 /*

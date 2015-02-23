@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <pthread.h>
+#include <assert.h>
 
 #include <esvr.h>
 
@@ -51,6 +52,15 @@ struct connection *pop_conn(struct conn_queue *cq)
 	}
 	pthread_mutex_unlock(&cq->lock);
 
+	return conn;
+}
+
+struct connection *get_conn_set_fd(struct conn_queue *cq, int fd)
+{
+	struct connection *conn;
+	conn = pop_conn(cq);
+	assert(conn != NULL);
+	set_conn_fd(conn, fd);
 	return conn;
 }
 
