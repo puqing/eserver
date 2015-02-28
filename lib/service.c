@@ -40,6 +40,13 @@ static int create_socket_and_bind(int port)
 		return -1;
 	}
 
+	int option = 1;
+	res = setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof option);
+	if (res == -1) {
+		perror("setsockopt");
+		return -1;
+	}
+
 	memset(&addr, 0, sizeof addr);
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(port);
