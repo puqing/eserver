@@ -113,3 +113,25 @@ int rearm_out(struct poller *p, struct connection *conn, int rearm)
 	}
 }
 
+int rearm_in(struct poller *p, struct connection *conn, int rearm)
+{
+	struct epoll_event event;
+	int res;
+
+	LOG_CONN(LOG_DEBUG, "Rearm in %d", rearm);
+	event.data.ptr = conn;
+	event.events = EPOLLET | EPOLLIN;
+	if (rearm) {
+		res = epoll_ctl(p->fd, EPOLL_CTL_ADD, get_conn_fd(conn), &event);
+	} else {
+		res = epoll_ctl(p->fd, EPOLL_CTL_DEL, get_conn_fd(conn), NULL);
+	}
+	if (res == -1)
+	{
+		SYSLOG_ERROR("epoll_ctl");
+		return -1;
+	} else {
+		return 0;
+	}
+}
+

@@ -209,6 +209,65 @@ int sendout(struct connection *conn, const char *data, size_t num)
 	return 0;
 }
 
+/*
+ * for client side sockets, single-thread
+ */
+ssize_t readin(struct connection *conn, size_t num)
+{
+#if 0
+	assert(conn->read_buf_end == conn->read_buf);
+
+	*(uint32_t*)conn->read_buf_end = num;
+	conn->read_buf_end += sizeof(uint32_t);
+
+	rearm_in(conn->p, conn, 1);
+
+	return 0;
+#else
+	size_t c;
+	ssize_t r;
+
+	c = 0;
+
+	assert(conn->read_buf_end == conn->read_buf);
+
+	*(uint32_t*)conn->read_buf_end = num;
+	conn->read_buf_end += sizeof(uint32_t);
+
+	do {
+		r = read(conn->fd, conn->read_buf_end, num - c);
+		LOG_CONN(LOG_DEBUG, "%ld bytes read", r);
+		if (r > 0) {
+			c += r;
+			conn->read_buf_end += r;
+		}
+	} while (r > 0 && c < num);
+
+	assert(c <= num);
+
+	if (c == num) {
+		printf("imm\n");
+		conn->msg_handler(conn, conn->read_buf+sizeof(uint32_t), num);
+		conn->read_buf_end = conn->read_buf;
+		return num;
+	} else if (r == 0) {
+		LOG_CONN(LOG_DEBUG, "Remote closed");
+		conn->close_handler(conn);
+		close_connection(conn);
+		return 0;
+	} else {
+		assert(r == -1);
+		SYSLOG_ERROR("read");
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			rearm_in(conn->p, conn, 1);
+		} else {
+			LOG_CONN(LOG_ERR, "Error other than EAGAIN encountered");
+		}
+		return -1;
+	}
+#endif
+}
+
 static void clear_conn(struct connection *conn)
 {
 	conn->reading = 0;

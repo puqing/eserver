@@ -10,17 +10,15 @@
 
 static void process_message(struct connection *conn, const char *msg, size_t len)
 {
-	char buf[10000];
+	char buf[256];
 	char *p;
 	int i;
 
-	*(uint32_t*)buf = 30*len+3+3;
-	p = buf + sizeof(uint32_t);
+	p = buf;
 
-	p[0] = 0;
 	strcpy(p, "^^^");
 	p += 3;
-	for (i=0; i<30; ++i) {
+	for (i=0; i<2; ++i) {
 		memcpy(p, msg, len);
 		p += len;
 	}
@@ -67,7 +65,7 @@ int main(int argc, char *argv[])
 	struct poller *p = create_poller();
 
 	struct conn_queue *cq = create_conn_queue(1000,
-			20000, 1024, 1024);
+			2000, 1024, 1024);
 
 	struct service *s = create_service(NULL, port, cq,
 		&process_connection);

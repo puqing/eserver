@@ -1,3 +1,6 @@
+#ifndef __ESVR_H__
+#define __ESVR_H__
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -25,6 +28,7 @@ void set_conn_fd(struct connection *conn, int fd);
 int get_conn_fd(struct connection *conn);
 
 int sendout(struct connection *conn, const char *data, size_t num);
+ssize_t readin(struct connection *conn, size_t num);
 
 typedef void message_handler(struct connection *conn,
 		const char* msg, size_t len);
@@ -73,6 +77,7 @@ struct poller;
 struct poller *create_poller();
 void add_service(struct poller *p, struct service *s);
 void add_connection(struct poller *p, struct connection *conn);
+int rearm_in(struct poller *p, struct connection *conn, int rearm);
 
 /*
  * A worker is a thread.
@@ -86,3 +91,4 @@ void *get_worker_data();
 }
 #endif
 
+#endif // __ESVR_H__

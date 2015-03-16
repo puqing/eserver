@@ -16,23 +16,19 @@
 
 #define PERROR(s) printf("%s:%d: %s: %s\n", __FILE__, __LINE__, s, strerror(errno))
 
-static unsigned long conn_total = 0;
+static unsigned long g_conn_total = 0;
+
+static struct poller *g_p;
 
 static void process_message(struct connection *conn, const char *msg, size_t len)
 {
 	write(1, msg, len);
 	write(1, "\n", 1);
 	fsync(1);
-
-	char *data = "Hello";
-	len = rand()*1.0/RAND_MAX*strlen(data);
-	if (len == 0) len = 1;
-	char buf[512];
-	*(uint32_t*)buf = len;
-	sendout(conn, buf, 4);
-	sendout(conn, data, len);
-
-	__sync_add_and_fetch(&conn_total, 1);
+	rearm_in(g_p, conn, 0);
+	__sync_add_and_fetch(&g_conn_total, 1);
+	printf("%lu\n", g_conn_total);
+	fflush(stdout);
 }
 
 static void process_connection_close(struct connection *conn)
@@ -101,7 +97,7 @@ void signal_handler(int sig)
 }
 
 #define THREADNUM 4
-#define CONN_NUM  10000
+#define CONN_NUM  1000
 
 int main(int argc, char *argv[])
 {
@@ -123,7 +119,7 @@ int main(int argc, char *argv[])
 	signal(SIGINT, signal_handler);
 
 	struct conn_queue *cq = create_conn_queue(1000,
-			20000, 512, 512);
+			2000, 1024, 512);
 
 	struct poller *p = create_poller();
 
@@ -132,17 +128,23 @@ int main(int argc, char *argv[])
 		int sfd = connect_server(ip_addr, port);
 		assert(sfd != -1);
 
-		struct connection *conn = pop_conn(cq);
+		struct connection *conn = get_conn_set_fd(cq, sfd);
 		assert(conn != NULL);
-		set_conn_fd(conn, sfd);
 		set_conn_handlers(conn, process_message, process_connection_close);
 
 		add_connection(p, conn);
+		rearm_in(p, conn, 0);
 
-		char buf[512];
-		*(uint32_t*)buf = 5;
-		sendout(conn, buf, 4);
-		sendout(conn, "Hello", 5);
+		g_p = p;
+
+		char *data = "Hello";
+		uint32_t len = rand()*1.0/RAND_MAX*strlen(data);
+		if (len == 0) len = 1;
+		sendout(conn, (char*)&len, sizeof(len));
+		sendout(conn, data, len);
+
+		int r = readin(conn, len*2+6);
+		printf("r = %d\n", r);
 	}
 
 	for (i = 0; i < THREADNUM; ++i) {
@@ -159,8 +161,8 @@ int main(int argc, char *argv[])
 	float avg_conn_per_sec = 0;
 	time_t end_time;
 	time(&end_time);
-	avg_conn_per_sec = 1.0*conn_total/(end_time-start_time);
-	fprintf(stderr, "avg_conn_per_sec = %f\n", avg_conn_per_sec);
+	avg_conn_per_sec = 1.0*g_conn_total/(end_time-start_time);
+	fprintf(stderr, "g_conn_total, avg_conn_per_sec = %lu, %f\n", g_conn_total, avg_conn_per_sec);
 
 	return 0;
 }
