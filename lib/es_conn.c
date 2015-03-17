@@ -7,15 +7,17 @@
 #include <pthread.h>
 #include <syslog.h>
 #include <assert.h>
+#include <fcntl.h>
+#include <arpa/inet.h>
 
 #include <esvr.h>
 
-#include "connmgr.h"
-#include "connection.h"
-#include "service.h"
-#include "poller.h"
+#include "es_connmgr.h"
+#include "es_conn.h"
+#include "es_service.h"
+#include "es_poller.h"
 
-struct connection
+struct es_conn
 {
 	int fd;
 	char *write_buf;
@@ -25,22 +27,22 @@ struct connection
 	pthread_t reading;
 	pthread_mutex_t read_lock;
 	pthread_mutex_t write_buf_lock;
-	struct poller *p;
+	struct es_poller *p;
 //	struct service *s;
-	message_handler *msg_handler;
-	connection_close_handler *close_handler;
-	struct conn_queue *cq;
+	es_messagehandler *msg_handler;
+	es_closehandler *close_handler;
+	struct es_connmgr *cq;
 	size_t read_buf_size;
 	size_t write_buf_size;
 	void *data;
 };
 
-int get_conn_fd(struct connection *conn)
+int get_conn_fd(struct es_conn *conn)
 {
 	return conn->fd;
 }
 
-void init_connection(struct connection *conn, int fd, size_t read_buf_size, size_t write_buf_size, struct conn_queue *cq)
+void init_connection(struct es_conn *conn, int fd, size_t read_buf_size, size_t write_buf_size, struct es_connmgr *cq)
 {
 	conn->fd = fd;
 	conn->cq = cq;
@@ -56,7 +58,7 @@ void init_connection(struct connection *conn, int fd, size_t read_buf_size, size
 	pthread_mutex_init(&conn->write_buf_lock, NULL);
 }
 
-static const char *process_data(struct connection *conn, const char *buf, size_t size)
+static const char *process_data(struct es_conn *conn, const char *buf, size_t size)
 {
 	uint32_t len;
 
@@ -80,7 +82,7 @@ static const char *process_data(struct connection *conn, const char *buf, size_t
  * Note: conn->reading is intentionally untouched in this function.
  * read/write buffers are cleaned when they are used again
  */
-static void close_connection(struct connection *conn)
+static void close_connection(struct es_conn *conn)
 {
 	if (close(conn->fd) == -1) {
 		LOG_CONN(LOG_ERR, "close: %s", strerror(errno));
@@ -92,7 +94,7 @@ static void close_connection(struct connection *conn)
 	push_conn(conn->cq, conn);
 }
 
-void read_data(struct connection *conn)
+void read_data(struct es_conn *conn)
 {
 	ssize_t count;
 
@@ -145,7 +147,7 @@ void read_data(struct connection *conn)
 /*
  * direct_send: true, called by sendData(); false, called by workers
  */
-void send_buffered_data(struct connection *conn, int direct_send)
+void send_buffered_data(struct es_conn *conn, int direct_send)
 {
 	int res = 0;
 	int total = 0;
@@ -190,7 +192,7 @@ void send_buffered_data(struct connection *conn, int direct_send)
 
 }
 
-int sendout(struct connection *conn, const char *data, size_t num)
+int es_send(struct es_conn *conn, const char *data, size_t num)
 {
 	size_t required_size = conn->write_buf_end - conn->write_buf + num;
 	if (required_size > conn->write_buf_size) {
@@ -212,7 +214,7 @@ int sendout(struct connection *conn, const char *data, size_t num)
 /*
  * for client side sockets, single-thread
  */
-ssize_t readin(struct connection *conn, size_t num)
+ssize_t es_recv(struct es_conn *conn, size_t num)
 {
 #if 0
 	assert(conn->read_buf_end == conn->read_buf);
@@ -268,14 +270,14 @@ ssize_t readin(struct connection *conn, size_t num)
 #endif
 }
 
-static void clear_conn(struct connection *conn)
+static void clear_conn(struct es_conn *conn)
 {
 	conn->reading = 0;
 	conn->read_buf_end = conn->read_buf;
 	conn->write_buf_end = conn->write_buf;
 }
 
-void set_conn_fd(struct connection *conn, int fd)
+void set_conn_fd(struct es_conn *conn, int fd)
 {
 	int res = dup2(fd, conn->fd);
 	if (res == -1) {
@@ -290,36 +292,105 @@ void set_conn_fd(struct connection *conn, int fd)
 	clear_conn(conn);
 }
 
-void set_conn_handlers(struct connection *conn,
-	message_handler *msg_handler,
-	connection_close_handler *close_handler)
+void es_sethandler(struct es_conn *conn,
+	es_messagehandler *msg_handler,
+	es_closehandler *close_handler)
 {
 	conn->msg_handler = msg_handler;
 	conn->close_handler = close_handler;
 }
 
-struct connection *allocate_connections(size_t num)
+struct es_conn *allocate_connections(size_t num)
 {
-	return malloc(sizeof(struct connection) * num);
+	return malloc(sizeof(struct es_conn) * num);
 }
 
-struct connection *get_conn(struct connection *conn_array, size_t i)
+struct es_conn *get_conn(struct es_conn *conn_array, size_t i)
 {
 	return &conn_array[i];
 }
 
-void set_conn_poller(struct connection *conn, struct poller *p)
+void set_conn_poller(struct es_conn *conn, struct es_poller *p)
 {
 	conn->p = p;
 }
 
-void set_conn_data(struct connection *conn, void *data)
+void es_setconndata(struct es_conn *conn, void *data)
 {
 	conn->data = data;
 }
 
-void *get_conn_data(struct connection *conn)
+void *es_getconndata(struct es_conn *conn)
 {
 	return conn->data;
+}
+
+/*
+ * client side connections
+ */
+
+static int make_socket_non_blocking(int sfd)
+{
+	int flags, res;
+
+	flags = fcntl(sfd, F_GETFL, 0);
+	if (flags == -1)
+	{
+		perror("fcntl");
+		close(sfd);
+		return -1;
+	}
+
+	flags |= O_NONBLOCK;
+	res = fcntl (sfd, F_SETFL, flags);
+	if (res == -1)
+	{
+		perror("fcntl");
+		close(sfd);
+		return -1;
+	}
+
+	return 0;
+}
+
+static int connect_server(const char *server, int port)
+{
+	int sfd;
+	struct sockaddr_in addr;
+	int res;
+
+	sfd = socket(AF_INET, SOCK_STREAM, 0);
+	if (sfd == -1) {
+		perror("socket");
+		return -1;
+	}
+
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(port);
+	inet_pton(AF_INET, server, &addr.sin_addr.s_addr);
+	res = connect(sfd, (struct sockaddr*)&addr, sizeof addr);
+	if (res < 0) {
+		perror("connect");
+		close(sfd);
+		return -1;
+	}
+
+	make_socket_non_blocking(sfd);
+	
+	return sfd;
+	
+}
+
+struct es_conn *es_newconn(char *ip, int port, struct es_connmgr *cq, es_connhandler *ch)
+{
+	int sfd;
+
+	sfd = connect_server(ip, port);
+	assert(sfd != -1);
+	struct es_conn *conn = get_conn_set_fd(cq, sfd);
+	assert(conn != NULL);
+	(*ch)(conn);
+
+	return conn;
 }
 

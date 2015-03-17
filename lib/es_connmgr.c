@@ -10,28 +10,28 @@
 
 #include <esvr.h>
 
-#include "connmgr.h"
-#include "service.h"
-#include "connection.h"
+#include "es_connmgr.h"
+#include "es_service.h"
+#include "es_conn.h"
 
 /***************************
 *    Connection Manager    *
 ***************************/
-struct conn_queue
+struct es_connmgr
 {
-	struct connection **free_conn;
+	struct es_conn **free_conn;
 	unsigned int head;
 	unsigned int tail;
 
 	unsigned int mask;
 	pthread_mutex_t lock;
 
-	struct connection *all_conn;
+	struct es_conn *all_conn;
 //	size_t number;
 	size_t size;
 };
 
-void push_conn(struct conn_queue *cq, struct connection *conn)
+void push_conn(struct es_connmgr *cq, struct es_conn *conn)
 {
 	pthread_mutex_lock(&cq->lock);
 	cq->free_conn[cq->tail & cq->mask]= conn;
@@ -39,9 +39,9 @@ void push_conn(struct conn_queue *cq, struct connection *conn)
 	pthread_mutex_unlock(&cq->lock);
 }
 
-struct connection *pop_conn(struct conn_queue *cq)
+struct es_conn *pop_conn(struct es_connmgr *cq)
 {
-	struct connection *conn;
+	struct es_conn *conn;
 
 	pthread_mutex_lock(&cq->lock);
 	if (cq->head == cq->tail) {
@@ -55,26 +55,26 @@ struct connection *pop_conn(struct conn_queue *cq)
 	return conn;
 }
 
-struct connection *get_conn_set_fd(struct conn_queue *cq, int fd)
+struct es_conn *get_conn_set_fd(struct es_connmgr *cq, int fd)
 {
-	struct connection *conn;
+	struct es_conn *conn;
 	conn = pop_conn(cq);
 	assert(conn != NULL);
 	set_conn_fd(conn, fd);
 	return conn;
 }
 
-struct conn_queue *create_conn_queue(int fd_base, size_t size, size_t read_buf_size, size_t write_buf_size)
+struct es_connmgr *es_newconnmgr(int fd_base, size_t size, size_t read_buf_size, size_t write_buf_size)
 {
 	unsigned int cap;
 	int i;
 
-	struct conn_queue *cq = malloc(sizeof(struct conn_queue));
+	struct es_connmgr *cq = malloc(sizeof(struct es_connmgr));
 
 	cap = 1;
 	while (cap <= size) cap <<= 1;
 	cq->mask = cap - 1;
-	cq->free_conn = malloc(sizeof(struct connection*) * cap);
+	cq->free_conn = malloc(sizeof(struct es_conn*) * cap);
 	cq->head = cq->tail = 0;
 
 	cq->size = size;
@@ -84,7 +84,7 @@ struct conn_queue *create_conn_queue(int fd_base, size_t size, size_t read_buf_s
 
 	for (i = 0; i < size; ++i)
 	{
-		struct connection *conn = get_conn(cq->all_conn, i);
+		struct es_conn *conn = get_conn(cq->all_conn, i);
 		init_connection(conn, fd_base +i, read_buf_size, write_buf_size, cq);
 
 		push_conn(cq, conn);
@@ -93,18 +93,18 @@ struct conn_queue *create_conn_queue(int fd_base, size_t size, size_t read_buf_s
 	return cq;
 }
 
-size_t get_active_conn_num(struct conn_queue *cq)
+size_t get_active_conn_num(struct es_connmgr *cq)
 {
 	return cq->size - (cq->tail - cq->head);
 }
 
-void log_conn_num(struct conn_queue *cq)
+void es_logconnmgr(struct es_connmgr *cq)
 {
-	syslog(LOG_INFO, "Concurrent connection number = %ld\n", get_active_conn_num(cq));
+	syslog(LOG_INFO, "Concurrent es_conn number = %ld\n", get_active_conn_num(cq));
 }
 
 #if 0
-static void destroy_conn_queue(struct conn_queue *cq)
+static void destroy_conn_queue(struct es_connmgr *cq)
 {
 	free(cq->free_conn);
 	free(cq->all_conn);

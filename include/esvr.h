@@ -9,8 +9,8 @@ extern "C" {
 
 /*
  * Connections are pre-allocated in a container, the
- * `conn_queue'.
- * Each connection object has a uniq and fixed fd number.
+ * `es_connmgr'.
+ * Each es_conn object has a uniq and fixed fd number.
  * Newly established connections are copied to the object's fd
  * number using dup2(2), and its own fd will be close(2)d after
  * that.
@@ -23,22 +23,20 @@ extern "C" {
  * Connection object can be asigned a user-data, which is
  * useful in the call-back functions.
  */
-struct connection;
-void set_conn_fd(struct connection *conn, int fd);
-int get_conn_fd(struct connection *conn);
+struct es_conn;
 
-int sendout(struct connection *conn, const char *data, size_t num);
-ssize_t readin(struct connection *conn, size_t num);
+int es_send(struct es_conn *conn, const char *data, size_t num);
+ssize_t es_recv(struct es_conn *conn, size_t num);
 
-typedef void message_handler(struct connection *conn,
+typedef void es_messagehandler(struct es_conn *conn,
 		const char* msg, size_t len);
-typedef void connection_close_handler(struct connection *conn);
-void set_conn_handlers(struct connection *conn,
-	message_handler *msg_handler,
-	connection_close_handler *close_handler);
+typedef void es_closehandler(struct es_conn *conn);
+void es_sethandler(struct es_conn *conn,
+	es_messagehandler *msg_handler,
+	es_closehandler *close_handler);
 
-void set_conn_data(struct connection *conn, void *data);
-void *get_conn_data(struct connection *conn);
+void es_setconndata(struct es_conn *conn, void *data);
+void *es_getconndata(struct es_conn *conn);
 
 /*
  * The container of the connection objects.
@@ -49,13 +47,15 @@ void *get_conn_data(struct connection *conn);
  * All the connections have read-buffer and write-buffer of 
  * the same size.
  */
-struct conn_queue;
-struct conn_queue *create_conn_queue(int fd_base,
+struct es_connmgr;
+struct es_connmgr *es_newconnmgr(int fd_base,
 		size_t size,
 		size_t read_buf_size,
 		size_t write_buf_size);
-struct connection *get_conn_set_fd(struct conn_queue *cq, int fd);
-void log_conn_num(struct conn_queue *cq);
+void es_logconnmgr(struct es_connmgr *cq);
+
+typedef void es_connhandler(struct es_conn *conn);
+struct es_conn *es_newconn(char *ip, int port, struct es_connmgr *cq, es_connhandler *ch);
 
 /*
  * Service represents a listening socket, and manages the
@@ -63,32 +63,32 @@ void log_conn_num(struct conn_queue *cq);
  * It has a call-back function for processing incoming 
  * connections
  */
-struct service;
-typedef void connection_handler(struct connection *conn);
-struct service *create_service(char *ip, int port,
-		struct conn_queue *cq,
-		connection_handler *ch);
+struct es_service;
+struct es_service *es_newservice(char *ip, int port,
+		struct es_connmgr *cq,
+		es_connhandler *ch);
 
 /*
  * Poller represents epoll. It accepts both services and 
  * individual connections.
  */
-struct poller;
-struct poller *create_poller();
-void add_service(struct poller *p, struct service *s);
-void add_connection(struct poller *p, struct connection *conn);
-int rearm_in(struct poller *p, struct connection *conn, int rearm);
+struct es_poller;
+struct es_poller *es_newpoller(void);
+void es_addservice(struct es_poller *p, struct es_service *s);
+void es_addconn(struct es_poller *p, struct es_conn *conn);
+int rearm_in(struct es_poller *p, struct es_conn *conn, int rearm);
 
 /*
- * A worker is a thread.
- * Each worker can have a user-data.
+ * A es_worker is a thread.
+ * Each es_worker can have a user-data.
  */
-struct worker;
-struct worker *create_worker(struct poller *p, void *data);
-void *get_worker_data();
+struct es_worker;
+struct es_worker *es_newworker(struct es_poller *p, void *data);
+void *es_getworkerdata();
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif // __ESVR_H__
+

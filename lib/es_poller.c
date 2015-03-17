@@ -14,23 +14,23 @@
 
 #include <esvr.h>
 
-#include "connmgr.h"
-#include "connection.h"
-#include "service.h"
-#include "poller.h"
+#include "es_connmgr.h"
+#include "es_conn.h"
+#include "es_service.h"
+#include "es_poller.h"
 
 #define MAX_SERVICE_NUM 16
 
-struct poller
+struct es_poller
 {
 	int fd;
-	struct service *services[MAX_SERVICE_NUM];
+	struct es_service *services[MAX_SERVICE_NUM];
 	unsigned int svr_num;
 };
 
-struct poller *create_poller()
+struct es_poller *es_newpoller()
 {
-	struct poller *p = malloc(sizeof(struct poller));
+	struct es_poller *p = malloc(sizeof(struct es_poller));
 	p->fd = epoll_create1 (0);
 	if (p->fd == -1)
 	{
@@ -43,7 +43,7 @@ struct poller *create_poller()
 	return p;
 }
 
-void add_service(struct poller *p, struct service *s)
+void es_addservice(struct es_poller *p, struct es_service *s)
 {
 	struct epoll_event event;
 
@@ -62,7 +62,7 @@ void add_service(struct poller *p, struct service *s)
 /*
  * TODO: optimize search
  */
-struct service *find_service(struct poller *p, void *s)
+struct es_service *find_service(struct es_poller *p, void *s)
 {
 	int i;
 	for (i = 0; i < p->svr_num; ++i) {
@@ -74,7 +74,7 @@ struct service *find_service(struct poller *p, void *s)
 	return NULL;
 }
 
-void add_connection(struct poller *p, struct connection *conn)
+void es_addconn(struct es_poller *p, struct es_conn *conn)
 {
 	struct epoll_event event;
 
@@ -90,12 +90,12 @@ void add_connection(struct poller *p, struct connection *conn)
 	set_conn_poller(conn, p);
 }
 
-int get_poller_fd(struct poller *p)
+int get_poller_fd(struct es_poller *p)
 {
 	return p->fd;
 }
 
-int rearm_out(struct poller *p, struct connection *conn, int rearm)
+int rearm_out(struct es_poller *p, struct es_conn *conn, int rearm)
 {
 	struct epoll_event event;
 	int res;
@@ -113,7 +113,7 @@ int rearm_out(struct poller *p, struct connection *conn, int rearm)
 	}
 }
 
-int rearm_in(struct poller *p, struct connection *conn, int rearm)
+int rearm_in(struct es_poller *p, struct es_conn *conn, int rearm)
 {
 	struct epoll_event event;
 	int res;

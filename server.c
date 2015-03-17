@@ -8,7 +8,7 @@
 
 #include <esvr.h>
 
-static void process_message(struct connection *conn, const char *msg, size_t len)
+static void process_message(struct es_conn *conn, const char *msg, size_t len)
 {
 	char buf[256];
 	char *p;
@@ -26,17 +26,17 @@ static void process_message(struct connection *conn, const char *msg, size_t len
 	strcpy(p, "$$$");
 	p += 3;
 
-	sendout(conn, buf, p-buf);
+	es_send(conn, buf, p-buf);
 }
 
-static void process_connection_close(struct connection *conn)
+static void process_connection_close(struct es_conn *conn)
 {
 //	printf("%lx close\n", conn);
 }
 
-static void process_connection(struct connection *conn)
+static void process_connection(struct es_conn *conn)
 {
-	set_conn_handlers(conn, process_message,
+	es_sethandler(conn, process_message,
 			process_connection_close);
 }
 
@@ -62,23 +62,23 @@ int main(int argc, char *argv[])
 
 	syslog(LOG_INFO, "server start");
 
-	struct poller *p = create_poller();
+	struct es_poller *p = es_newpoller();
 
-	struct conn_queue *cq = create_conn_queue(1000,
+	struct es_connmgr *cq = es_newconnmgr(1000,
 			2000, 1024, 1024);
 
-	struct service *s = create_service(NULL, port, cq,
+	struct es_service *s = es_newservice(NULL, port, cq,
 		&process_connection);
 
-	add_service(p, s);
+	es_addservice(p, s);
 
 	long i;
 	for (i = 0; i < THREADNUM; ++i) {
-		create_worker(p, (void*)i);
+		es_newworker(p, (void*)i);
 	}
 
 	while (1) {
-		log_conn_num(cq);
+		es_logconnmgr(cq);
 		sleep(1);
 	}
 

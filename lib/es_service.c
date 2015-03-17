@@ -13,19 +13,19 @@
 
 #include <esvr.h>
 
-#include "connmgr.h"
-#include "connection.h"
-#include "service.h"
-#include "connmgr.h"
+#include "es_connmgr.h"
+#include "es_conn.h"
+#include "es_service.h"
+#include "es_connmgr.h"
 
 /**********************
- *   service           *
+ *   es_service           *
  *********************/
-struct service
+struct es_service
 {
 	int fd;
-	connection_handler *conn_handler;
-	struct conn_queue *cq;
+	es_connhandler *conn_handler;
+	struct es_connmgr *cq;
 };
 
 static int create_socket_and_bind(int port)
@@ -101,7 +101,7 @@ static int shrink_socket_send_buffer(int sfd)
 }
 #endif
 
-struct connection *accept_connection(struct service *s)
+struct es_conn *accept_connection(struct es_service *s)
 {
 	struct sockaddr in_addr;
 	socklen_t in_len;
@@ -131,7 +131,7 @@ struct connection *accept_connection(struct service *s)
 			NI_NUMERICHOST | NI_NUMERICSERV);
 	if (res == 0)
 	{
-		syslog(LOG_DEBUG, "[%x:%d] Accepted connection"
+		syslog(LOG_DEBUG, "[%x:%d] Accepted es_conn"
 				"(host=%s, port=%s)\n",
 				 (unsigned int)pthread_self(), infd, hbuf, sbuf);
 	}
@@ -141,7 +141,7 @@ struct connection *accept_connection(struct service *s)
 		return NULL;
 	}
 
-	struct connection *conn = pop_conn(s->cq);
+	struct es_conn *conn = pop_conn(s->cq);
 	assert(conn != NULL);
 
 	set_conn_fd(conn, infd);
@@ -151,11 +151,11 @@ struct connection *accept_connection(struct service *s)
 	return conn;
 }
 
-struct service *create_service(char *ip, int port, struct conn_queue *cq, connection_handler *ch)
+struct es_service *es_newservice(char *ip, int port, struct es_connmgr *cq, es_connhandler *ch)
 {
 	int fd;
 	int res;
-	struct service *svr;
+	struct es_service *svr;
 
 	fd = create_socket_and_bind(port);
 	if (fd == -1)
@@ -172,7 +172,7 @@ struct service *create_service(char *ip, int port, struct conn_queue *cq, connec
 		abort ();
 	}
 
-	svr = malloc(sizeof(struct service));
+	svr = malloc(sizeof(struct es_service));
 
 	svr->fd = fd;
 	svr->conn_handler = ch;
@@ -181,12 +181,12 @@ struct service *create_service(char *ip, int port, struct conn_queue *cq, connec
 	return svr;
 }
 
-size_t get_conn_num(struct service *s)
+size_t get_conn_num(struct es_service *s)
 {
 	return get_active_conn_num(s->cq);
 }
 
-int get_service_fd(struct service *s)
+int get_service_fd(struct es_service *s)
 {
 	return s->fd;
 }

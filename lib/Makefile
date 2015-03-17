@@ -2,7 +2,7 @@ TARGET=libesvr.a
 CFLAGS=-pthread -g -Wall -I../include
 ARFLAGS=rcs
 
-$(TARGET): service.o poller.o connection.o worker.o connmgr.o
+$(TARGET): es_service.o es_poller.o es_conn.o es_worker.o es_connmgr.o
 	ar $(ARFLAGS) $@ $^
 
 .c.o:

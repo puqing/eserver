@@ -12,19 +12,18 @@
 
 #include <esvr.h>
 
-#include "connmgr.h"
-#include "connection.h"
-#include "service.h"
-#include "poller.h"
-#include "worker.h"
+#include "es_connmgr.h"
+#include "es_conn.h"
+#include "es_service.h"
+#include "es_poller.h"
 
 #define MAXEVENTS 64
 
 static pthread_key_t g_key;
 static pthread_once_t g_key_once = PTHREAD_ONCE_INIT;
 
-struct worker {
-	struct poller *p;
+struct es_worker {
+	struct es_poller *p;
 	pthread_t tid;
 	void *data;
 };
@@ -33,7 +32,7 @@ static void *work(void *data)
 {
 	struct epoll_event *events;
 
-	struct worker *w = (struct worker*)data;
+	struct es_worker *w = (struct es_worker*)data;
 
 	int res = pthread_setspecific(g_key, w->data);
 	assert(res == 0);
@@ -49,7 +48,7 @@ static void *work(void *data)
 		for (i = 0; i < n; ++i) {
 			/*
 			syslog(LOG_DEBUG, "Read poll %x: %d :%d: %d %d", (unsigned int)pthread_self(), i,
-			(events[i].data.ptr==w->p)?get_sfd(w->p):get_fd((struct connection*)events[i].data.ptr),
+			(events[i].data.ptr==w->p)?get_sfd(w->p):get_fd((struct es_conn*)events[i].data.ptr),
 					events[i].events & EPOLLIN, events[i].events & EPOLLOUT);*/ // TODO
 		}
 		for (i = 0; i < n; ++i)
@@ -59,24 +58,24 @@ static void *work(void *data)
 				!((events[i].events & EPOLLIN) || (events[i].events & EPOLLOUT)))
 			{
 				if (find_service(w->p, events[i].data.ptr)) {
-					syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on listening fd", get_service_fd((struct service*)events[i].data.ptr), events[i].events);
+					syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on listening fd", get_service_fd((struct es_service*)events[i].data.ptr), events[i].events);
 				} else {
-					syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on working fd", get_conn_fd((struct connection*)events[i].data.ptr), events[i].events);
-//					close_connection((struct connection*)events[i].data.ptr);
+					syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on working fd", get_conn_fd((struct es_conn*)events[i].data.ptr), events[i].events);
+//					close_connection((struct es_conn*)events[i].data.ptr);
 				}
 			}
 			if (find_service(w->p, events[i].data.ptr)) {
 //				accept_all_connection(w->p);
-				struct connection *conn;
-				while (NULL != (conn = accept_connection((struct service*)events[i].data.ptr))) {
-					add_connection(w->p, conn);
+				struct es_conn *conn;
+				while (NULL != (conn = accept_connection((struct es_service*)events[i].data.ptr))) {
+					es_addconn(w->p, conn);
 				}
 			} else if (events[i].events & EPOLLIN) {
-				read_data((struct connection*)events[i].data.ptr);
+				read_data((struct es_conn*)events[i].data.ptr);
 			} else if (events[i].events & EPOLLOUT) {
-				send_buffered_data(((struct connection*)events[i].data.ptr), 0);
+				send_buffered_data(((struct es_conn*)events[i].data.ptr), 0);
 			} else {
-				syslog(LOG_INFO, "%s:%d: events = 0x%x", "epoll event neither IN nor OUT", get_conn_fd((struct connection*)events[i].data.ptr), events[i].events);
+				syslog(LOG_INFO, "%s:%d: events = 0x%x", "epoll event neither IN nor OUT", get_conn_fd((struct es_conn*)events[i].data.ptr), events[i].events);
 			}
 		}
 	}
@@ -90,9 +89,9 @@ static void make_key()
 	pthread_key_create(&g_key, NULL);
 }
 
-struct worker *create_worker(struct poller *p, void *data)
+struct es_worker *es_newworker(struct es_poller *p, void *data)
 {
-	struct worker *w = malloc(sizeof(struct worker));
+	struct es_worker *w = malloc(sizeof(struct es_worker));
 	w->p = p;
 	w->data = data;
 	pthread_once(&g_key_once, make_key);
@@ -102,7 +101,7 @@ struct worker *create_worker(struct poller *p, void *data)
 	return w;
 }
 
-void *get_worker_data()
+void *es_getworkerdata()
 {
 	void *res = pthread_getspecific(g_key);
 	assert(res);

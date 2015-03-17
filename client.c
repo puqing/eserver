@@ -18,9 +18,9 @@
 
 static unsigned long g_conn_total = 0;
 
-static struct poller *g_p;
+static struct es_poller *g_p;
 
-static void process_message(struct connection *conn, const char *msg, size_t len)
+static void process_message(struct es_conn *conn, const char *msg, size_t len)
 {
 	write(1, msg, len);
 	write(1, "\n", 1);
@@ -31,61 +31,15 @@ static void process_message(struct connection *conn, const char *msg, size_t len
 	fflush(stdout);
 }
 
-static void process_connection_close(struct connection *conn)
+static void process_connection_close(struct es_conn *conn)
 {
 	printf("%lx close\n", (unsigned long)conn);
 }
 
-static int make_socket_non_blocking(int sfd)
+static void process_connection(struct es_conn *conn)
 {
-	int flags, res;
-
-	flags = fcntl(sfd, F_GETFL, 0);
-	if (flags == -1)
-	{
-		perror("fcntl");
-		close(sfd);
-		return -1;
-	}
-
-	flags |= O_NONBLOCK;
-	res = fcntl (sfd, F_SETFL, flags);
-	if (res == -1)
-	{
-		perror("fcntl");
-		close(sfd);
-		return -1;
-	}
-
-	return 0;
-}
-
-static int connect_server(const char *server, int port)
-{
-	int sfd;
-	struct sockaddr_in addr;
-	int res;
-
-	sfd = socket(AF_INET, SOCK_STREAM, 0);
-	if (sfd == -1) {
-		perror("socket");
-		return -1;
-	}
-
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(port);
-	inet_pton(AF_INET, server, &addr.sin_addr.s_addr);
-	res = connect(sfd, (struct sockaddr*)&addr, sizeof addr);
-	if (res < 0) {
-		perror("connect");
-		close(sfd);
-		return -1;
-	}
-
-	make_socket_non_blocking(sfd);
-	
-	return sfd;
-	
+	es_sethandler(conn, process_message,
+			process_connection_close);
 }
 
 static int gStop = 0;
@@ -118,21 +72,16 @@ int main(int argc, char *argv[])
 
 	signal(SIGINT, signal_handler);
 
-	struct conn_queue *cq = create_conn_queue(1000,
+	struct es_connmgr *cq = es_newconnmgr(1000,
 			2000, 1024, 512);
 
-	struct poller *p = create_poller();
+	struct es_poller *p = es_newpoller();
 
 	long i;
 	for (i = 0; i < CONN_NUM; ++i) {
-		int sfd = connect_server(ip_addr, port);
-		assert(sfd != -1);
+		struct es_conn *conn = es_newconn(ip_addr, port, cq, &process_connection);
 
-		struct connection *conn = get_conn_set_fd(cq, sfd);
-		assert(conn != NULL);
-		set_conn_handlers(conn, process_message, process_connection_close);
-
-		add_connection(p, conn);
+		es_addconn(p, conn);
 		rearm_in(p, conn, 0);
 
 		g_p = p;
@@ -140,21 +89,21 @@ int main(int argc, char *argv[])
 		char *data = "Hello";
 		uint32_t len = rand()*1.0/RAND_MAX*strlen(data);
 		if (len == 0) len = 1;
-		sendout(conn, (char*)&len, sizeof(len));
-		sendout(conn, data, len);
+		es_send(conn, (char*)&len, sizeof(len));
+		es_send(conn, data, len);
 
-		int r = readin(conn, len*2+6);
+		int r = es_recv(conn, len*2+6);
 		printf("r = %d\n", r);
 	}
 
 	for (i = 0; i < THREADNUM; ++i) {
-		create_worker(p, (void*)i);
+		es_newworker(p, (void*)i);
 	}
 
 	time(&start_time);
 
 	while (gStop == 0) {
-		log_conn_num(cq);
+		es_logconnmgr(cq);
 		sleep(1);
 	}
 
