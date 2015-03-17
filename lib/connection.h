@@ -12,6 +12,7 @@ void init_connection(struct connection *conn, int fd, size_t read_buf_size, size
 struct poller;
 void set_conn_poller(struct connection *conn, struct poller *p);
 
+// log level: LOG_DEBUG for more messages, or LOG_INFO for less
 #define LOG_LIMIT LOG_INFO
 #define syslog(a, ...) if (LOG_MASK(a) & LOG_UPTO(LOG_LIMIT)) syslog((a), __VA_ARGS__)
 #define SYSLOG_ERROR(x) syslog(LOG_ERR, "[%s:%d]%s: %s", __FILE__, __LINE__, x, strerror(errno))
