@@ -18,37 +18,34 @@
 #include "es_service.h"
 #include "es_poller.h"
 
-#define MAXEVENTS 64
-
 static unsigned int g_workingnum = 0;
 static unsigned int g_syncnum = 0;
 
-struct worker_handler {
-	es_workerhandler *hdlr;
-	void *data;
-};
+#define MAX_SYNC_HDLR_NUM 256
 
-static struct worker_handler *g_handlers[256];
+es_workerhandler *g_synchdlr[MAX_SYNC_HDLR_NUM];
+static void *g_syncparam[MAX_SYNC_HDLR_NUM];
 static unsigned int g_handler_counter = 0;
 
 pthread_cond_t g_synccond;
 pthread_mutex_t g_synclock;
 
-void es_syncworkers(es_workerhandler *hdlr, void *data)
+int es_syncworkers(es_workerhandler *hdlr, void *data)
 {
-	struct worker_handler *wh;
-
-	wh = (struct worker_handler*)malloc(sizeof(*wh));
-	wh->hdlr = hdlr;
-	wh->data = data;
+	if (g_handler_counter >= MAX_SYNC_HDLR_NUM) {
+		return -1;
+	}
 
 	pthread_mutex_lock(&g_synclock);
 
-	g_handlers[g_handler_counter++] = wh;
-	printf("g_workingnum = %d\n", g_workingnum);
+	g_synchdlr[g_handler_counter] = hdlr;
+	g_syncparam[g_handler_counter++] = data;
+
 	g_syncnum = g_workingnum;
 
 	pthread_mutex_unlock(&g_synclock);
+
+	return 0;
 }
 
 static inline void checksync(void)
@@ -69,8 +66,7 @@ static inline void checksync(void)
 	}
 	++g_workingnum;
 	for (i = 0; i < g_handler_counter; ++i) {
-		(*g_handlers[i]->hdlr)(g_handlers[i]->data);
-		free(g_handlers[i]);
+		(*g_synchdlr[i])(g_syncparam[i]);
 	}
 	g_handler_counter = 0;
 	pthread_mutex_unlock(&g_synclock);
@@ -82,6 +78,8 @@ static inline void checksync(void)
 
 static pthread_key_t g_key;
 static pthread_once_t g_key_once = PTHREAD_ONCE_INIT;
+
+#define MAXEVENTS 64
 
 struct es_worker {
 	struct es_poller *p;
