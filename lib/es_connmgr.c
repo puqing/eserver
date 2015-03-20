@@ -100,7 +100,7 @@ size_t get_active_conn_num(struct es_connmgr *cq)
 
 void es_logconnmgr(struct es_connmgr *cq)
 {
-	syslog(LOG_INFO, "Concurrent es_conn number = %ld\n", get_active_conn_num(cq));
+	syslog(LOG_INFO, "Concurrent connection number = %ld\n", get_active_conn_num(cq));
 }
 
 #if 0

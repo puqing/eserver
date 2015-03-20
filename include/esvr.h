@@ -85,6 +85,10 @@ int rearm_in(struct es_poller *p, struct es_conn *conn, int rearm);
 struct es_worker;
 struct es_worker *es_newworker(struct es_poller *p, void *data);
 void *es_getworkerdata();
+typedef void es_workerhandler(void *data);
+
+/* Stop all the worker threads and run hdlr once, with data as its parameter */
+void es_syncworkers(es_workerhandler *hdlr, void *data);
 
 #ifdef __cplusplus
 }

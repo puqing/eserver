@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <syslog.h>
 #include <assert.h>
+#include <signal.h>
 
 #include <esvr.h>
 
@@ -18,6 +19,66 @@
 #include "es_poller.h"
 
 #define MAXEVENTS 64
+
+static unsigned int g_workingnum = 0;
+static unsigned int g_syncnum = 0;
+
+struct worker_handler {
+	es_workerhandler *hdlr;
+	void *data;
+};
+
+static struct worker_handler *g_handlers[256];
+static unsigned int g_handler_counter = 0;
+
+pthread_cond_t g_synccond;
+pthread_mutex_t g_synclock;
+
+void es_syncworkers(es_workerhandler *hdlr, void *data)
+{
+	struct worker_handler *wh;
+
+	wh = (struct worker_handler*)malloc(sizeof(*wh));
+	wh->hdlr = hdlr;
+	wh->data = data;
+
+	pthread_mutex_lock(&g_synclock);
+
+	g_handlers[g_handler_counter++] = wh;
+	printf("g_workingnum = %d\n", g_workingnum);
+	g_syncnum = g_workingnum;
+
+	pthread_mutex_unlock(&g_synclock);
+}
+
+static inline void checksync(void)
+{
+	int i;
+
+	if (g_syncnum == 0) {
+		return;
+	}
+
+	printf("g_syncnum, g_workingnum: %d, %d\n", g_syncnum, g_workingnum);
+
+	pthread_mutex_lock(&g_synclock);
+	--g_syncnum;
+	--g_workingnum;
+	while (g_syncnum > 0) {
+		pthread_cond_wait(&g_synccond, &g_synclock);
+	}
+	++g_workingnum;
+	for (i = 0; i < g_handler_counter; ++i) {
+		(*g_handlers[i]->hdlr)(g_handlers[i]->data);
+		free(g_handlers[i]);
+	}
+	g_handler_counter = 0;
+	pthread_mutex_unlock(&g_synclock);
+
+	if (g_workingnum == 1) {
+		pthread_cond_broadcast(&g_synccond);
+	}
+}
 
 static pthread_key_t g_key;
 static pthread_once_t g_key_once = PTHREAD_ONCE_INIT;
@@ -30,19 +91,23 @@ struct es_worker {
 
 static void *work(void *data)
 {
-	struct epoll_event *events;
+	sigset_t set;
+	sigfillset(&set);
+	int res = pthread_sigmask(SIG_BLOCK, &set, NULL);
+	assert(res == 0);
 
 	struct es_worker *w = (struct es_worker*)data;
 
-	int res = pthread_setspecific(g_key, w->data);
+	res = pthread_setspecific(g_key, w->data);
 	assert(res == 0);
 
-	int i;
+	struct epoll_event *events;
 
 	events = (struct epoll_event*)calloc(MAXEVENTS, sizeof *events);
 
 	while(1)
 	{
+		int i;
 		syslog(LOG_DEBUG, "Begin read poll 0x%lx: %d:", pthread_self(), get_poller_fd(w->p));
 		int n = epoll_wait(get_poller_fd(w->p), events, MAXEVENTS, -1);
 		for (i = 0; i < n; ++i) {
@@ -77,6 +142,7 @@ static void *work(void *data)
 			} else {
 				syslog(LOG_INFO, "%s:%d: events = 0x%x", "epoll event neither IN nor OUT", get_conn_fd((struct es_conn*)events[i].data.ptr), events[i].events);
 			}
+			checksync();
 		}
 	}
 
@@ -87,6 +153,16 @@ static void *work(void *data)
 static void make_key()
 {
 	pthread_key_create(&g_key, NULL);
+	pthread_cond_init(&g_synccond, NULL);
+	pthread_mutex_init(&g_synclock, NULL);
+}
+
+/* g_synclock should have been initialized */
+static inline void inc_workingnum()
+{
+	pthread_mutex_lock(&g_synclock);
+	++g_workingnum;
+	pthread_mutex_unlock(&g_synclock);
 }
 
 struct es_worker *es_newworker(struct es_poller *p, void *data)
@@ -97,6 +173,8 @@ struct es_worker *es_newworker(struct es_poller *p, void *data)
 	pthread_once(&g_key_once, make_key);
 	pthread_create(&w->tid, NULL, work, (void*)w);
 	syslog(LOG_DEBUG, "thread 0x%x created\n", (unsigned int)w->tid);
+
+	inc_workingnum();
 
 	return w;
 }
