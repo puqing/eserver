@@ -1,5 +1,5 @@
 TARGET=libesvr.a
-CFLAGS=-pthread -g -Wall -I../include
+CFLAGS = -I ../include -Wall -Wno-unused-parameter -Werror=declaration-after-statement -O2 -march=x86-64 -pthread
 ARFLAGS=rcs
 
 $(TARGET): es_service.o es_poller.o es_conn.o es_worker.o es_connmgr.o

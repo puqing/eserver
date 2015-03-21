@@ -31,6 +31,7 @@ struct es_service
 static int create_socket_and_bind(int port)
 {
 	int res, sfd;
+	int option = 1;
 
 	struct sockaddr_in addr;
 
@@ -40,7 +41,6 @@ static int create_socket_and_bind(int port)
 		return -1;
 	}
 
-	int option = 1;
 	res = setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof option);
 	if (res == -1) {
 		perror("setsockopt");
@@ -108,6 +108,7 @@ struct es_conn *accept_connection(struct es_service *s)
 	int infd;
 	char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
 	int res;
+	struct es_conn *conn;
 
 	in_len = sizeof in_addr;
 	infd = accept(s->fd, &in_addr, &in_len);
@@ -141,7 +142,7 @@ struct es_conn *accept_connection(struct es_service *s)
 		return NULL;
 	}
 
-	struct es_conn *conn = pop_conn(s->cq);
+	conn = pop_conn(s->cq);
 	assert(conn != NULL);
 
 	set_conn_fd(conn, infd);

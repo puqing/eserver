@@ -46,12 +46,13 @@ struct es_poller *es_newpoller()
 void es_addservice(struct es_poller *p, struct es_service *s)
 {
 	struct epoll_event event;
+	int res;
 
 	p->services[p->svr_num++] = s;
 
 	event.data.ptr = s;
 	event.events = EPOLLIN | EPOLLET;
-	int res = epoll_ctl(p->fd, EPOLL_CTL_ADD, get_service_fd(s), &event);
+	res = epoll_ctl(p->fd, EPOLL_CTL_ADD, get_service_fd(s), &event);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("epoll_ctl");
@@ -77,10 +78,11 @@ struct es_service *find_service(struct es_poller *p, void *s)
 void es_addconn(struct es_poller *p, struct es_conn *conn)
 {
 	struct epoll_event event;
+	int res;
 
 	event.data.ptr = conn;
 	event.events = EPOLLIN | EPOLLET;
-	int res = epoll_ctl(p->fd, EPOLL_CTL_ADD, get_conn_fd(conn), &event);
+	res = epoll_ctl(p->fd, EPOLL_CTL_ADD, get_conn_fd(conn), &event);
 	if (res == -1)
 	{
 		SYSLOG_ERROR("epoll_ctl");

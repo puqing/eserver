@@ -46,6 +46,10 @@ int main(int argc, char *argv[])
 {
 
 	int port = 0;
+	struct es_poller *p;
+	struct es_connmgr *cq;
+	struct es_service *s;
+	long i;
 
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s port\n", argv[0]);
@@ -62,17 +66,14 @@ int main(int argc, char *argv[])
 
 	syslog(LOG_INFO, "server start");
 
-	struct es_poller *p = es_newpoller();
+	p = es_newpoller();
 
-	struct es_connmgr *cq = es_newconnmgr(1000,
-			2000, 1024, 1024);
+	cq = es_newconnmgr(1000, 2000, 1024, 1024);
 
-	struct es_service *s = es_newservice(NULL, port, cq,
-		&process_connection);
+	s = es_newservice(NULL, port, cq, &process_connection);
 
 	es_addservice(p, s);
 
-	long i;
 	for (i = 0; i < THREADNUM; ++i) {
 		es_newworker(p, (void*)i);
 	}

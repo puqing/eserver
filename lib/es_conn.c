@@ -113,9 +113,10 @@ void read_data(struct es_conn *conn)
 		LOG_CONN(LOG_DEBUG, "%ld bytes read", count);
 
 		if (count > 0) {
+			const char *p;
 			pthread_mutex_unlock(&conn->read_lock);
 			conn->read_buf_end += count;
-			const char *p = process_data(conn, conn->read_buf, conn->read_buf_end-conn->read_buf);
+			p = process_data(conn, conn->read_buf, conn->read_buf_end-conn->read_buf);
 			assert(p >= conn->read_buf && p <= conn->read_buf_end);
 			if (p == conn->read_buf_end) {
 				conn->read_buf_end = conn->read_buf;
@@ -384,10 +385,11 @@ static int connect_server(const char *server, int port)
 struct es_conn *es_newconn(char *ip, int port, struct es_connmgr *cq, es_connhandler *ch)
 {
 	int sfd;
+	struct es_conn *conn;
 
 	sfd = connect_server(ip, port);
 	assert(sfd != -1);
-	struct es_conn *conn = get_conn_set_fd(cq, sfd);
+	conn = get_conn_set_fd(cq, sfd);
 	assert(conn != NULL);
 	(*ch)(conn);
 

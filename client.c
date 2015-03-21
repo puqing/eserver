@@ -57,6 +57,11 @@ int main(int argc, char *argv[])
 {
 	char *ip_addr;
 	short port;
+	struct es_connmgr *cq;
+	long i;
+	struct es_poller *p;
+	float avg_conn_per_sec;
+	time_t end_time;
 
 	if (argc != 3) {
 		fprintf(stderr, "Usage: %s ip_addr port\n", argv[0]);
@@ -72,27 +77,27 @@ int main(int argc, char *argv[])
 
 	signal(SIGINT, signal_handler);
 
-	struct es_connmgr *cq = es_newconnmgr(1000,
-			2000, 1024, 512);
+	cq = es_newconnmgr(1000, 2000, 1024, 512);
 
-	struct es_poller *p = es_newpoller();
+	p = es_newpoller();
 
-	long i;
 	for (i = 0; i < CONN_NUM; ++i) {
 		struct es_conn *conn = es_newconn(ip_addr, port, cq, &process_connection);
+		const char *data = "Hello";
+		uint32_t len;
+		int r;
 
 		es_addconn(p, conn);
 		rearm_in(p, conn, 0);
 
 		g_p = p;
 
-		char *data = "Hello";
-		uint32_t len = rand()*1.0/RAND_MAX*strlen(data);
+		len = rand()*1.0/RAND_MAX*strlen(data);
 		if (len == 0) len = 1;
 		es_send(conn, (char*)&len, sizeof(len));
 		es_send(conn, data, len);
 
-		int r = es_recv(conn, len*2+6);
+		r = es_recv(conn, len*2+6);
 		printf("r = %d\n", r);
 	}
 
@@ -107,8 +112,7 @@ int main(int argc, char *argv[])
 		sleep(1);
 	}
 
-	float avg_conn_per_sec = 0;
-	time_t end_time;
+	avg_conn_per_sec = 0;
 	time(&end_time);
 	avg_conn_per_sec = 1.0*g_conn_total/(end_time-start_time);
 	fprintf(stderr, "g_conn_total, avg_conn_per_sec = %lu, %f\n", g_conn_total, avg_conn_per_sec);

@@ -1,6 +1,6 @@
 EXE=server client
 LIB=lib/libesvr.a
-CFLAGS=-pthread -g -Wall -I ./include
+CFLAGS=-I ./include -Wall -Wno-unused-parameter -Werror=declaration-after-statement -O2 -march=x86-64 -g -pthread
 LDFLAGS=-L./lib -lesvr -pthread -static
 
 all: $(LIB) $(EXE)

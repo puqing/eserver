@@ -90,24 +90,27 @@ struct es_worker {
 static void *work(void *data)
 {
 	sigset_t set;
+	int res;
+	struct es_worker *w;
+	struct epoll_event *events;
+
 	sigfillset(&set);
-	int res = pthread_sigmask(SIG_BLOCK, &set, NULL);
+	res = pthread_sigmask(SIG_BLOCK, &set, NULL);
 	assert(res == 0);
 
-	struct es_worker *w = (struct es_worker*)data;
+	w = (struct es_worker*)data;
 
 	res = pthread_setspecific(g_key, w->data);
 	assert(res == 0);
-
-	struct epoll_event *events;
 
 	events = (struct epoll_event*)calloc(MAXEVENTS, sizeof *events);
 
 	while(1)
 	{
 		int i;
+		int n;
 		syslog(LOG_DEBUG, "Begin read poll 0x%lx: %d:", pthread_self(), get_poller_fd(w->p));
-		int n = epoll_wait(get_poller_fd(w->p), events, MAXEVENTS, -1);
+		n = epoll_wait(get_poller_fd(w->p), events, MAXEVENTS, -1);
 		for (i = 0; i < n; ++i) {
 			/*
 			syslog(LOG_DEBUG, "Read poll %x: %d :%d: %d %d", (unsigned int)pthread_self(), i,
