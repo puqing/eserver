@@ -28,7 +28,8 @@ struct es_conn;
 int es_send(struct es_conn *conn, const char *data, size_t num);
 ssize_t es_recv(struct es_conn *conn, size_t num);
 
-typedef void es_messagehandler(struct es_conn *conn,
+/* Return -1 will close the connection */
+typedef int es_messagehandler(struct es_conn *conn,
 		const char* msg, size_t len);
 typedef void es_closehandler(struct es_conn *conn);
 void es_sethandler(struct es_conn *conn,

@@ -20,7 +20,7 @@ static unsigned long g_conn_total = 0;
 
 static struct es_poller *g_p;
 
-static void process_message(struct es_conn *conn, const char *msg, size_t len)
+static int process_message(struct es_conn *conn, const char *msg, size_t len)
 {
 	write(1, msg, len);
 	write(1, "\n", 1);
@@ -29,6 +29,8 @@ static void process_message(struct es_conn *conn, const char *msg, size_t len)
 	__sync_add_and_fetch(&g_conn_total, 1);
 	printf("%lu\n", g_conn_total);
 	fflush(stdout);
+
+	return -1;
 }
 
 static void process_connection_close(struct es_conn *conn)

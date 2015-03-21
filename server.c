@@ -8,7 +8,7 @@
 
 #include <esvr.h>
 
-static void process_message(struct es_conn *conn, const char *msg, size_t len)
+static int process_message(struct es_conn *conn, const char *msg, size_t len)
 {
 	char buf[256];
 	char *p;
@@ -27,6 +27,8 @@ static void process_message(struct es_conn *conn, const char *msg, size_t len)
 	p += 3;
 
 	es_send(conn, buf, p-buf);
+
+	return 0;
 }
 
 static void process_connection_close(struct es_conn *conn)

@@ -28,7 +28,6 @@ struct es_conn
 	pthread_mutex_t read_lock;
 	pthread_mutex_t write_buf_lock;
 	struct es_poller *p;
-//	struct service *s;
 	es_messagehandler *msg_handler;
 	es_closehandler *close_handler;
 	struct es_connmgr *cq;
@@ -63,14 +62,17 @@ static const char *process_data(struct es_conn *conn, const char *buf, size_t si
 	uint32_t len;
 
 	while (size >= sizeof(len)) {
+		int res;
 		len = *(uint32_t*)buf;
 		size -= sizeof(len);
 		if (size < len) {
 			break;
 		}
 		buf += sizeof(len);
-//		(*get_handler(conn->s))(conn, buf, len);
-		(*conn->msg_handler)(conn, buf, len);
+		res = (*conn->msg_handler)(conn, buf, len);
+		if (res == -1) {
+			return NULL;
+		}
 		buf += len;
 		size -= len;
 	}
@@ -80,7 +82,7 @@ static const char *process_data(struct es_conn *conn, const char *buf, size_t si
 
 /*
  * Note: conn->reading is intentionally untouched in this function.
- * read/write buffers are cleaned when they are used again
+ * read/write buffers will be cleaned when they are used again
  */
 static void close_connection(struct es_conn *conn)
 {
@@ -117,6 +119,10 @@ void read_data(struct es_conn *conn)
 			pthread_mutex_unlock(&conn->read_lock);
 			conn->read_buf_end += count;
 			p = process_data(conn, conn->read_buf, conn->read_buf_end-conn->read_buf);
+			if (p == NULL) {
+				close_connection(conn);
+				break;
+			}
 			assert(p >= conn->read_buf && p <= conn->read_buf_end);
 			if (p == conn->read_buf_end) {
 				conn->read_buf_end = conn->read_buf;
@@ -126,13 +132,13 @@ void read_data(struct es_conn *conn)
 				conn->read_buf_end -= p-conn->read_buf;
 			}
 		} else if (count == 0) {
+			pthread_mutex_unlock(&conn->read_lock);
 			LOG_CONN(LOG_DEBUG, "Remote closed");
 			close_connection(conn);
-			pthread_mutex_unlock(&conn->read_lock);
 		} else {
-			assert(count == -1);
 			conn->reading = 0;
 			pthread_mutex_unlock(&conn->read_lock);
+			assert(count == -1);
 			LOG_CONN(LOG_DEBUG, "read returns -1");
 			if (errno == EBADF) {
 				LOG_CONN(LOG_ERR, "Reading a closed fd");
@@ -249,9 +255,14 @@ ssize_t es_recv(struct es_conn *conn, size_t num)
 	assert(c <= num);
 
 	if (c == num) {
-		printf("imm\n");
-		conn->msg_handler(conn, conn->read_buf+sizeof(uint32_t), num);
-		conn->read_buf_end = conn->read_buf;
+		int res;
+		res = conn->msg_handler(conn,
+				conn->read_buf+sizeof(uint32_t), num);
+		if (res == -1) {
+			close_connection(conn);
+		} else {
+			conn->read_buf_end = conn->read_buf;
+		}
 		return num;
 	} else if (r == 0) {
 		LOG_CONN(LOG_DEBUG, "Remote closed");
