@@ -287,7 +287,7 @@ void set_conn_fd(struct es_conn *conn, int fd)
 
 	close(fd);
 
-	LOG_CONN(LOG_DEBUG, "Connection asigned new fd");
+	LOG_CONN(LOG_INFO, "Connection asigned new fd");
 
 	clear_conn(conn);
 }
