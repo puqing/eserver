@@ -25,17 +25,17 @@ static int process_message(struct es_conn *conn, const char *msg, size_t len)
 	write(1, msg, len);
 	write(1, "\n", 1);
 	fsync(1);
-	rearm_in(g_p, conn, 0);
 	__sync_add_and_fetch(&g_conn_total, 1);
-	printf("%lu\n", g_conn_total);
-	fflush(stdout);
+//	++g_conn_total;
+//	printf("%lu\n", g_conn_total);
+//	fflush(stdout);
 
 	return -1;
 }
 
 static void process_connection_close(struct es_conn *conn)
 {
-	printf("%lx close\n", (unsigned long)conn);
+//	printf("%lx close\n", (unsigned long)conn);
 }
 
 static void process_connection(struct es_conn *conn)
@@ -85,17 +85,16 @@ int main(int argc, char *argv[])
 
 	for (i = 0; i < CONN_NUM; ++i) {
 		struct es_conn *conn = es_newconn(ip_addr, port, cq, &process_connection);
-		const char *data = "Hello";
+		const char *data = "origin";
 		uint32_t len;
 		int r;
 
 		es_addconn(p, conn);
-		rearm_in(p, conn, 0);
 
 		g_p = p;
 
 		len = rand()*1.0/RAND_MAX*strlen(data);
-		if (len == 0) len = 1;
+		++len;
 		es_send(conn, (char*)&len, sizeof(len));
 		es_send(conn, data, len);
 
@@ -110,8 +109,11 @@ int main(int argc, char *argv[])
 	time(&start_time);
 
 	while (gStop == 0) {
-		es_logconnmgr(cq);
-		sleep(1);
+		if (g_conn_total == CONN_NUM) {
+			break;
+		}
+//		es_logconnmgr(cq);
+		usleep(1000);
 	}
 
 	avg_conn_per_sec = 0;

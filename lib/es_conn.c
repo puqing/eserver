@@ -24,7 +24,7 @@ struct es_conn
 	char *write_buf_end;
 	char *read_buf;
 	char *read_buf_end;
-	pthread_t reading;
+	int reading;
 	pthread_mutex_t read_lock;
 	pthread_mutex_t write_buf_lock;
 	struct es_poller *p;
@@ -106,7 +106,7 @@ void read_data(struct es_conn *conn)
 		return;
 	}
 
-	conn->reading = pthread_self();
+	conn->reading = 1;
 	pthread_mutex_unlock(&conn->read_lock);
 
 	do {
@@ -223,16 +223,6 @@ int es_send(struct es_conn *conn, const char *data, size_t num)
  */
 ssize_t es_recv(struct es_conn *conn, size_t num)
 {
-#if 0
-	assert(conn->read_buf_end == conn->read_buf);
-
-	*(uint32_t*)conn->read_buf_end = num;
-	conn->read_buf_end += sizeof(uint32_t);
-
-	rearm_in(conn->p, conn, 1);
-
-	return 0;
-#else
 	size_t c;
 	ssize_t r;
 
@@ -242,6 +232,8 @@ ssize_t es_recv(struct es_conn *conn, size_t num)
 
 	*(uint32_t*)conn->read_buf_end = num;
 	conn->read_buf_end += sizeof(uint32_t);
+
+	pthread_mutex_lock(&conn->read_lock);
 
 	do {
 		r = read(conn->fd, conn->read_buf_end, num - c);
@@ -256,6 +248,7 @@ ssize_t es_recv(struct es_conn *conn, size_t num)
 
 	if (c == num) {
 		int res;
+		pthread_mutex_unlock(&conn->read_lock);
 		res = conn->msg_handler(conn,
 				conn->read_buf+sizeof(uint32_t), num);
 		if (res == -1) {
@@ -265,6 +258,7 @@ ssize_t es_recv(struct es_conn *conn, size_t num)
 		}
 		return num;
 	} else if (r == 0) {
+		pthread_mutex_unlock(&conn->read_lock);
 		LOG_CONN(LOG_DEBUG, "Remote closed");
 		conn->close_handler(conn);
 		close_connection(conn);
@@ -273,13 +267,14 @@ ssize_t es_recv(struct es_conn *conn, size_t num)
 		assert(r == -1);
 		SYSLOG_ERROR("read");
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-			rearm_in(conn->p, conn, 1);
+			conn->reading = 0;
+			pthread_mutex_unlock(&conn->read_lock);
 		} else {
+			pthread_mutex_unlock(&conn->read_lock);
 			LOG_CONN(LOG_ERR, "Error other than EAGAIN encountered");
 		}
 		return -1;
 	}
-#endif
 }
 
 static void clear_conn(struct es_conn *conn)
@@ -393,7 +388,11 @@ static int connect_server(const char *server, int port)
 	
 }
 
-struct es_conn *es_newconn(char *ip, int port, struct es_connmgr *cq, es_connhandler *ch)
+/*
+ * Client side connections
+ * TODO: asyncronous connection
+ */
+struct es_conn *es_newconn(const char *ip, int port, struct es_connmgr *cq, es_connhandler *ch)
 {
 	int sfd;
 	struct es_conn *conn;
@@ -403,6 +402,7 @@ struct es_conn *es_newconn(char *ip, int port, struct es_connmgr *cq, es_connhan
 	conn = get_conn_set_fd(cq, sfd);
 	assert(conn != NULL);
 	(*ch)(conn);
+	conn->reading = 1;
 
 	return conn;
 }

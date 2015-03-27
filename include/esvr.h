@@ -56,7 +56,7 @@ struct es_connmgr *es_newconnmgr(int fd_base,
 void es_logconnmgr(struct es_connmgr *cq);
 
 typedef void es_connhandler(struct es_conn *conn);
-struct es_conn *es_newconn(char *ip, int port, struct es_connmgr *cq, es_connhandler *ch);
+struct es_conn *es_newconn(const char *ip, int port, struct es_connmgr *cq, es_connhandler *ch);
 
 /*
  * Service represents a listening socket, and manages the
