@@ -1,7 +1,7 @@
 struct es_conn;
 
 void set_conn_fd(struct es_conn *conn, int fd);
-int get_conn_fd(struct es_conn *conn);
+int get_conn_fd(const struct es_conn *conn);
 
 void read_data(struct es_conn *conn);
 void send_buffered_data(struct es_conn *conn, int direct_send);

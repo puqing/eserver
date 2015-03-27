@@ -36,7 +36,7 @@ struct es_conn
 	void *data;
 };
 
-int get_conn_fd(struct es_conn *conn)
+int get_conn_fd(const struct es_conn *conn)
 {
 	return conn->fd;
 }
