@@ -18,8 +18,64 @@
 #include "es_service.h"
 #include "es_poller.h"
 
-static unsigned int g_workingnum = 0;
-static unsigned int g_syncnum = 0;
+// Better be no less than MAXEVENTS * thread_num
+#define EVENTSTACKSIZE 1024
+
+struct epoll_event g_eventstack[EVENTSTACKSIZE];
+struct epoll_event *g_eventend = g_eventstack;
+pthread_mutex_t g_eventstacklock;
+
+static void push_events(struct epoll_event *e, size_t num)
+{
+	assert(num >= 0);
+	assert(g_eventend + num < g_eventstack + EVENTSTACKSIZE);
+
+	pthread_mutex_lock(&g_eventstacklock);
+	memcpy(g_eventend, e, num * sizeof(*e));
+	g_eventend += num;
+	pthread_mutex_unlock(&g_eventstacklock);
+}
+
+static int pop_events(struct epoll_event *e, size_t num)
+{
+	int n;
+
+	pthread_mutex_lock(&g_eventstacklock);
+	n = g_eventend - g_eventstack;
+	n = (n < num)?n:num;
+	memcpy(e, g_eventend - n, n);
+	g_eventend -= n;
+	pthread_mutex_unlock(&g_eventstacklock);
+
+	return n;
+}
+
+#define MAXEVENTS 64
+
+struct es_worker {
+	struct es_poller *p;
+	pthread_t tid;
+	void *data;
+
+	struct epoll_event events[MAXEVENTS];
+	struct epoll_event *e;
+	int evnum;
+};
+
+static void unload_events(struct es_worker *w)
+{
+	push_events(w->e+1, w->events + w->evnum - w->e - 1);
+	w->e = w->events;
+	w->evnum = 0;
+}
+
+static void load_events(struct es_worker *w)
+{
+	w->evnum += pop_events(w->e, MAXEVENTS - w->evnum);
+}
+
+static int g_workingnum = 0;
+static int g_syncnum = 0;
 
 #define MAX_SYNC_HDLR_NUM 256
 
@@ -52,11 +108,15 @@ static inline void checksync(void)
 {
 	int i;
 
+	assert(g_workingnum > 0);
+
 	if (g_syncnum == 0) {
 		return;
 	}
 
-	printf("g_syncnum, g_workingnum: %d, %d\n", g_syncnum, g_workingnum);
+	assert(g_syncnum > 0);
+
+	syslog(LOG_INFO, "g_syncnum, g_workingnum: %d, %d\n", g_syncnum, g_workingnum);
 
 	pthread_mutex_lock(&g_synclock);
 	--g_syncnum;
@@ -79,14 +139,6 @@ static inline void checksync(void)
 static pthread_key_t g_key;
 static pthread_once_t g_key_once = PTHREAD_ONCE_INIT;
 
-#define MAXEVENTS 64
-
-struct es_worker {
-	struct es_poller *p;
-	pthread_t tid;
-	void *data;
-};
-
 static void *work(void *data)
 {
 	sigset_t set;
@@ -100,51 +152,57 @@ static void *work(void *data)
 
 	w = (struct es_worker*)data;
 
-	res = pthread_setspecific(g_key, w->data);
+	res = pthread_setspecific(g_key, w);
 	assert(res == 0);
 
-	events = (struct epoll_event*)calloc(MAXEVENTS, sizeof *events);
+	w->e = w->events;
+	w->evnum = 0;
 
 	while(1)
 	{
-		int i;
-		int n;
-		syslog(LOG_DEBUG, "Begin read poll 0x%lx: %d:", pthread_self(), get_poller_fd(w->p));
-		n = epoll_wait(get_poller_fd(w->p), events, MAXEVENTS, -1);
-		for (i = 0; i < n; ++i) {
-			/*
-			syslog(LOG_DEBUG, "Read poll %x: %d :%d: %d %d", (unsigned int)pthread_self(), i,
-			(events[i].data.ptr==w->p)?get_sfd(w->p):get_fd((struct es_conn*)events[i].data.ptr),
-					events[i].events & EPOLLIN, events[i].events & EPOLLOUT);*/ // TODO
+		struct epoll_event *e;
+
+		load_events(w);
+
+		if (w->evnum == 0) {
+			syslog(LOG_DEBUG, "Begin read poll 0x%lx: %d:",
+					pthread_self(), get_poller_fd(w->p));
+			w->evnum = epoll_wait(get_poller_fd(w->p), w->events, MAXEVENTS, -1);
+			syslog(LOG_DEBUG, "%d events returned", w->evnum);
 		}
-		for (i = 0; i < n; ++i)
+
+		for (e = &w->events[0]; e < &w->events[w->evnum]; ++e)
 		{
-			if ((events[i].events & EPOLLERR) ||
-				(events[i].events & EPOLLHUP) ||
-				!((events[i].events & EPOLLIN) || (events[i].events & EPOLLOUT)))
+			w->e = e;
+
+			if ((e->events & EPOLLERR) ||
+				(e->events & EPOLLHUP) ||
+				!((e->events & EPOLLIN) || (e->events & EPOLLOUT)))
 			{
-				if (find_service(w->p, events[i].data.ptr)) {
-					syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on listening fd", get_service_fd((struct es_service*)events[i].data.ptr), events[i].events);
+				if (find_service(w->p, e->data.ptr)) {
+					syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on listening fd", get_service_fd((struct es_service*)e->data.ptr), e->events);
 				} else {
-					syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on working fd", get_conn_fd((struct es_conn*)events[i].data.ptr), events[i].events);
-//					close_connection((struct es_conn*)events[i].data.ptr);
+					syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on working fd", get_conn_fd((struct es_conn*)e->data.ptr), e->events);
+//					close_connection((struct es_conn*)e->data.ptr);
 				}
 			}
-			if (find_service(w->p, events[i].data.ptr)) {
+			if (find_service(w->p, e->data.ptr)) {
 //				accept_all_connection(w->p);
 				struct es_conn *conn;
-				while (NULL != (conn = accept_connection((struct es_service*)events[i].data.ptr))) {
+				while (NULL != (conn = accept_connection((struct es_service*)e->data.ptr))) {
 					es_addconn(w->p, conn);
 				}
-			} else if (events[i].events & EPOLLIN) {
-				read_data((struct es_conn*)events[i].data.ptr);
-			} else if (events[i].events & EPOLLOUT) {
-				send_buffered_data(((struct es_conn*)events[i].data.ptr), 0);
+			} else if (e->events & EPOLLIN) {
+				read_data((struct es_conn*)e->data.ptr);
+			} else if (e->events & EPOLLOUT) {
+				send_buffered_data(((struct es_conn*)e->data.ptr), 0);
 			} else {
-				syslog(LOG_INFO, "%s:%d: events = 0x%x", "epoll event neither IN nor OUT", get_conn_fd((struct es_conn*)events[i].data.ptr), events[i].events);
+				syslog(LOG_INFO, "%s:%d: events = 0x%x", "epoll event neither IN nor OUT", get_conn_fd((struct es_conn*)e->data.ptr), e->events);
 			}
 			checksync();
 		}
+
+		w->evnum = 0;
 	}
 
 	free(events);
@@ -156,6 +214,7 @@ static void make_key()
 	pthread_key_create(&g_key, NULL);
 	pthread_cond_init(&g_synccond, NULL);
 	pthread_mutex_init(&g_synclock, NULL);
+	pthread_mutex_init(&g_eventstacklock, NULL);
 }
 
 /* g_synclock should have been initialized */
@@ -182,8 +241,8 @@ struct es_worker *es_newworker(struct es_poller *p, void *data)
 
 void *es_getworkerdata()
 {
-	void *res = pthread_getspecific(g_key);
-	assert(res);
-	return res;
+	struct es_worker *w = pthread_getspecific(g_key);
+	assert(w);
+	return w->data;
 }
 
