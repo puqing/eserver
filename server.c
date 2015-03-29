@@ -42,6 +42,19 @@ static void process_connection(struct es_conn *conn)
 			process_connection_close);
 }
 
+void signal_handler(int sig)
+{
+	static int i = 1;
+
+	if (i) {
+		i = 0;
+		es_syncworkers(0);
+	} else {
+		i = 1;
+		es_syncworkers(2);
+	}
+}
+
 #define THREADNUM 4
 
 int main(int argc, char *argv[])
@@ -52,6 +65,7 @@ int main(int argc, char *argv[])
 	struct es_connmgr *cq;
 	struct es_service *s;
 	long i;
+	struct sigaction act;
 
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s port\n", argv[0]);
@@ -63,6 +77,11 @@ int main(int argc, char *argv[])
 //	daemon(0, 0);
 
 	signal(SIGPIPE, SIG_IGN);
+
+	act.sa_handler = &signal_handler;
+	sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+	sigaction(SIGHUP, &act, NULL);
 
 	openlog(argv[0], LOG_PID, LOG_USER);
 
