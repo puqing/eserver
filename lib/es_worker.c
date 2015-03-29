@@ -25,7 +25,7 @@ struct epoll_event g_eventstack[EVENTSTACKSIZE];
 struct epoll_event *g_eventend = g_eventstack;
 pthread_mutex_t g_eventstacklock;
 
-static void push_events(struct epoll_event *e, size_t num)
+static void push_events(struct epoll_event *e, int num)
 {
 	assert(num >= 0);
 	assert(g_eventend + num < g_eventstack + EVENTSTACKSIZE);
@@ -36,14 +36,16 @@ static void push_events(struct epoll_event *e, size_t num)
 	pthread_mutex_unlock(&g_eventstacklock);
 }
 
-static int pop_events(struct epoll_event *e, size_t num)
+static int pop_events(struct epoll_event *e, int num)
 {
 	int n;
+
+	assert(g_eventend >= g_eventstack);
 
 	pthread_mutex_lock(&g_eventstacklock);
 	n = g_eventend - g_eventstack;
 	n = (n < num)?n:num;
-	memcpy(e, g_eventend - n, n);
+	memcpy(e, g_eventend - n, n * sizeof(*e));
 	g_eventend -= n;
 	pthread_mutex_unlock(&g_eventstacklock);
 
@@ -71,6 +73,10 @@ static void unload_events(struct es_worker *w)
 
 static void load_events(struct es_worker *w)
 {
+	// currently only load events for empty event sets
+	assert(w->e == w->events);
+	assert(w->evnum == 0);
+
 	w->evnum += pop_events(w->e, MAXEVENTS - w->evnum);
 }
 
@@ -151,8 +157,6 @@ static void *work(void *data)
 
 	while(1)
 	{
-		struct epoll_event *e;
-
 		load_events(w);
 
 		if (w->evnum == 0) {
@@ -162,9 +166,10 @@ static void *work(void *data)
 			syslog(LOG_DEBUG, "%d events returned", w->evnum);
 		}
 
-		for (e = &w->events[0]; e < &w->events[w->evnum]; ++e)
+		for (w->e = &w->events[0]; w->e < &w->events[w->evnum]; ++w->e)
 		{
-			w->e = e;
+			struct epoll_event *e;
+			e = w->e;
 
 			if ((e->events & EPOLLERR) ||
 				(e->events & EPOLLHUP) ||
@@ -190,9 +195,14 @@ static void *work(void *data)
 			} else {
 				syslog(LOG_INFO, "%s:%d: events = 0x%x", "epoll event neither IN nor OUT", get_conn_fd((struct es_conn*)e->data.ptr), e->events);
 			}
+
 			checksync(w);
+			if (w->evnum == 0) { // events unloaded
+				break;
+			}
 		}
 
+		w->e = w->events;
 		w->evnum = 0;
 	}
 
@@ -215,6 +225,11 @@ static inline void inc_workernum()
 	++g_workingnum;
 	++g_syncnum;
 	pthread_mutex_unlock(&g_synclock);
+}
+
+int es_getworkingnum(void)
+{
+	return g_workingnum;
 }
 
 struct es_worker *es_newworker(struct es_poller *p, void *data)

@@ -90,6 +90,7 @@ typedef void es_workerhandler(void *data);
 
 /* Stop all the worker threads and run hdlr once, with data as its parameter */
 void es_syncworkers(int syncnum);
+int es_getworkingnum(void);
 
 #ifdef __cplusplus
 }
