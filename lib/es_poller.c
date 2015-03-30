@@ -38,8 +38,6 @@ struct event_data {
 struct es_poller
 {
 	int fd;
-	struct es_service *services[MAX_SERVICE_NUM];
-	unsigned int svr_num;
 };
 
 struct es_poller *es_newpoller()
@@ -52,8 +50,6 @@ struct es_poller *es_newpoller()
 		abort ();
 	}
 
-	p->svr_num = 0;
-
 	return p;
 }
 
@@ -62,8 +58,6 @@ void es_addservice(struct es_poller *p, struct es_service *s)
 	struct epoll_event event;
 	int res;
 	struct event_data *evdata;
-
-	p->services[p->svr_num++] = s;
 
 	evdata = malloc(sizeof(*evdata));
 	evdata->type = ST_LISTENING;
@@ -79,7 +73,7 @@ void es_addservice(struct es_poller *p, struct es_service *s)
 	}
 }
 
-struct es_service *event_service(struct event_data *evdata)
+const struct es_service *event_service(const struct event_data *evdata)
 {
 	if (evdata->type == ST_LISTENING) {
 		return evdata->data.service;
@@ -88,7 +82,7 @@ struct es_service *event_service(struct event_data *evdata)
 	}
 }
 
-struct es_conn *event_server_conn(struct event_data *evdata)
+struct es_conn *event_server_conn(const struct event_data *evdata)
 {
 	if (evdata->type == ST_SERVER) {
 		return evdata->data.conn;
@@ -97,7 +91,7 @@ struct es_conn *event_server_conn(struct event_data *evdata)
 	}
 }
 
-struct es_conn *event_client_conn(struct event_data *evdata)
+struct es_conn *event_client_conn(const struct event_data *evdata)
 {
 	if (evdata->type == ST_CLIENT) {
 		return evdata->data.conn;

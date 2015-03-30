@@ -77,7 +77,6 @@ struct es_poller;
 struct es_poller *es_newpoller(void);
 void es_addservice(struct es_poller *p, struct es_service *s);
 void es_addconn(struct es_poller *p, struct es_conn *conn, int client_side);
-int rearm_in(struct es_poller *p, struct es_conn *conn, int rearm);
 
 /*
  * A es_worker is a thread.

@@ -101,7 +101,7 @@ static int shrink_socket_send_buffer(int sfd)
 }
 #endif
 
-struct es_conn *accept_connection(struct es_service *s)
+struct es_conn *accept_connection(const struct es_service *s)
 {
 	struct sockaddr in_addr;
 	socklen_t in_len;
