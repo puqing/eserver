@@ -77,7 +77,16 @@ static const char *process_data(struct es_conn *conn, const char *buf, size_t si
 		size -= len;
 	}
 
-	return buf;
+	assert(buf >= conn->read_buf && buf <= conn->read_buf_end);
+	if (buf == conn->read_buf_end) {
+		conn->read_buf_end = conn->read_buf;
+	} else if (buf != conn->read_buf) {
+		// overlap, is it ok? need more test.
+		memcpy(conn->read_buf, buf, conn->read_buf_end - buf);
+		conn->read_buf_end -= buf-conn->read_buf;
+	}
+
+	return conn->read_buf;
 }
 
 /*
@@ -122,14 +131,6 @@ void read_data(struct es_conn *conn)
 			if (p == NULL) {
 				close_connection(conn);
 				break;
-			}
-			assert(p >= conn->read_buf && p <= conn->read_buf_end);
-			if (p == conn->read_buf_end) {
-				conn->read_buf_end = conn->read_buf;
-			} else if (p != conn->read_buf) {
-				// overlap! need more test.
-				memcpy(conn->read_buf, p, conn->read_buf_end - p);
-				conn->read_buf_end -= p-conn->read_buf;
 			}
 		} else if (count == 0) {
 			pthread_mutex_unlock(&conn->read_lock);
