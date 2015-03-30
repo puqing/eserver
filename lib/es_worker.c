@@ -252,13 +252,14 @@ int es_getworkingnum(void)
 struct es_worker *es_newworker(struct es_poller *p, void *data)
 {
 	struct es_worker *w = malloc(sizeof(struct es_worker));
+
+	inc_workernum();
+
 	w->p = p;
 	w->data = data;
 	pthread_once(&g_key_once, make_key);
 	pthread_create(&w->tid, NULL, work, (void*)w);
 	syslog(LOG_DEBUG, "thread 0x%x created\n", (unsigned int)w->tid);
-
-	inc_workernum();
 
 	return w;
 }
