@@ -84,12 +84,16 @@ int main(int argc, char *argv[])
 	p = es_newpoller();
 
 	for (i = 0; i < CONN_NUM; ++i) {
-		struct es_conn *conn = es_newconn(ip_addr, port, cq, &process_connection);
 		const char *data = "origin";
 		uint32_t len;
 		int r;
 
-		es_addconn(p, conn);
+		struct es_conn *conn = es_newconn(ip_addr, port, cq, &process_connection);
+		if (conn == NULL) {
+			exit(1);
+		}
+
+		es_addconn(p, conn, 1);
 
 		g_p = p;
 

@@ -21,6 +21,20 @@
 
 #define MAX_SERVICE_NUM 16
 
+enum sock_type {
+	ST_LISTENING,
+	ST_SERVER,
+	ST_CLIENT
+};
+
+struct event_data {
+	enum sock_type type;
+	union {
+		struct es_conn *conn;
+		struct es_service *service;
+	} data;
+};
+
 struct es_poller
 {
 	int fd;
@@ -47,10 +61,15 @@ void es_addservice(struct es_poller *p, struct es_service *s)
 {
 	struct epoll_event event;
 	int res;
+	struct event_data *evdata;
 
 	p->services[p->svr_num++] = s;
 
-	event.data.ptr = s;
+	evdata = malloc(sizeof(*evdata));
+	evdata->type = ST_LISTENING;
+	evdata->data.service = s;
+
+	event.data.ptr = evdata;
 	event.events = EPOLLIN | EPOLLET;
 	res = epoll_ctl(p->fd, EPOLL_CTL_ADD, get_service_fd(s), &event);
 	if (res == -1)
@@ -60,27 +79,44 @@ void es_addservice(struct es_poller *p, struct es_service *s)
 	}
 }
 
-/*
- * TODO: optimize search
- */
-struct es_service *find_service(struct es_poller *p, void *s)
+struct es_service *event_service(struct event_data *evdata)
 {
-	int i;
-	for (i = 0; i < p->svr_num; ++i) {
-		if (p->services[i] == s) {
-			return p->services[i];
-		}
+	if (evdata->type == ST_LISTENING) {
+		return evdata->data.service;
+	} else {
+		return NULL;
 	}
-
-	return NULL;
 }
 
-void es_addconn(struct es_poller *p, struct es_conn *conn)
+struct es_conn *event_server_conn(struct event_data *evdata)
+{
+	if (evdata->type == ST_SERVER) {
+		return evdata->data.conn;
+	} else {
+		return NULL;
+	}
+}
+
+struct es_conn *event_client_conn(struct event_data *evdata)
+{
+	if (evdata->type == ST_CLIENT) {
+		return evdata->data.conn;
+	} else {
+		return NULL;
+	}
+}
+
+void es_addconn(struct es_poller *p, struct es_conn *conn, int client_side)
 {
 	struct epoll_event event;
 	int res;
+	struct event_data *evdata;
 
-	event.data.ptr = conn;
+	evdata = malloc(sizeof(*evdata));
+	evdata->type = client_side?ST_CLIENT:ST_SERVER;
+	evdata->data.conn = conn;
+
+	event.data.ptr = evdata;
 	event.events = EPOLLIN | EPOLLET;
 	res = epoll_ctl(p->fd, EPOLL_CTL_ADD, get_conn_fd(conn), &event);
 	if (res == -1)
@@ -103,31 +139,9 @@ int rearm_out(struct es_poller *p, struct es_conn *conn, int rearm)
 	int res;
 
 	LOG_CONN(LOG_DEBUG, "Rearm out %d", rearm);
-	event.data.ptr = conn;
+//	event.data.ptr = conn;
 	event.events = EPOLLET | EPOLLIN | (rearm?EPOLLOUT:0);
 	res = epoll_ctl(p->fd, EPOLL_CTL_MOD, get_conn_fd(conn), &event);
-	if (res == -1)
-	{
-		SYSLOG_ERROR("epoll_ctl");
-		return -1;
-	} else {
-		return 0;
-	}
-}
-
-int rearm_in(struct es_poller *p, struct es_conn *conn, int rearm)
-{
-	struct epoll_event event;
-	int res;
-
-	LOG_CONN(LOG_DEBUG, "Rearm in %d", rearm);
-	event.data.ptr = conn;
-	event.events = EPOLLET | EPOLLIN;
-	if (rearm) {
-		res = epoll_ctl(p->fd, EPOLL_CTL_ADD, get_conn_fd(conn), &event);
-	} else {
-		res = epoll_ctl(p->fd, EPOLL_CTL_DEL, get_conn_fd(conn), NULL);
-	}
 	if (res == -1)
 	{
 		SYSLOG_ERROR("epoll_ctl");

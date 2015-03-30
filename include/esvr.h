@@ -76,7 +76,7 @@ struct es_service *es_newservice(char *ip, int port,
 struct es_poller;
 struct es_poller *es_newpoller(void);
 void es_addservice(struct es_poller *p, struct es_service *s);
-void es_addconn(struct es_poller *p, struct es_conn *conn);
+void es_addconn(struct es_poller *p, struct es_conn *conn, int client_side);
 int rearm_in(struct es_poller *p, struct es_conn *conn, int rearm);
 
 /*

@@ -398,7 +398,9 @@ struct es_conn *es_newconn(const char *ip, int port, struct es_connmgr *cq, es_c
 	struct es_conn *conn;
 
 	sfd = connect_server(ip, port);
-	assert(sfd != -1);
+	if (sfd == -1) {
+		return NULL;
+	}
 	conn = get_conn_set_fd(cq, sfd);
 	assert(conn != NULL);
 	(*ch)(conn);
