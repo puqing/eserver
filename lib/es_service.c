@@ -187,7 +187,7 @@ size_t get_conn_num(struct es_service *s)
 	return get_active_conn_num(s->cq);
 }
 
-int get_service_fd(struct es_service *s)
+int get_service_fd(const struct es_service *s)
 {
 	return s->fd;
 }

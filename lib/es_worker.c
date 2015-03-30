@@ -136,24 +136,79 @@ static inline void checksync(struct es_worker *w)
 static pthread_key_t g_key;
 static pthread_once_t g_key_once = PTHREAD_ONCE_INIT;
 
-static void *work(void *data)
+static void disable_signals()
 {
-	sigset_t set;
 	int res;
-	struct es_worker *w;
-	struct epoll_event *events;
-
+	sigset_t set;
 	sigfillset(&set);
 	res = pthread_sigmask(SIG_BLOCK, &set, NULL);
 	assert(res == 0);
+}
+
+static void clear_events(struct es_worker *w)
+{
+	w->e = w->events;
+	w->evnum = 0;
+}
+
+static void log_exceptional_events(uint32_t events, struct es_poller *p, void *ptr)
+{
+	if ((events & EPOLLERR) ||
+		(events & EPOLLHUP) ||
+		!((events & EPOLLIN) || (events & EPOLLOUT)))
+	{
+		if (find_service(p, ptr)) {
+			syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on listening fd", get_service_fd((struct es_service*)ptr), events);
+		} else {
+			syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on working fd", get_conn_fd((struct es_conn*)ptr), events);
+		}
+	}
+}
+
+static void process_events(struct es_worker *w)
+{
+	for (w->e = &w->events[0]; w->e < &w->events[w->evnum]; ++w->e)
+	{
+		struct epoll_event *e;
+		e = w->e;
+
+		log_exceptional_events(w->e->events, w->p, e->data.ptr);
+
+		if (find_service(w->p, e->data.ptr)) {
+			struct es_conn *conn;
+			while (NULL != (conn = accept_connection((struct es_service*)e->data.ptr))) {
+				es_addconn(w->p, conn);
+			}
+		} else if (e->events & EPOLLIN) {
+			read_data((struct es_conn*)e->data.ptr);
+		} else if (e->events & EPOLLOUT) {
+			send_buffered_data(((struct es_conn*)e->data.ptr), 0);
+		} else {
+			syslog(LOG_INFO, "%s:%d: events = 0x%x", "epoll event neither IN nor OUT", get_conn_fd((struct es_conn*)e->data.ptr), e->events);
+		}
+
+		checksync(w);
+		if (w->evnum == 0) { // events unloaded
+			break;
+		}
+	}
+
+	clear_events(w);
+}
+
+static void *work(void *data)
+{
+	int res;
+	struct es_worker *w;
+
+	disable_signals();
 
 	w = (struct es_worker*)data;
 
 	res = pthread_setspecific(g_key, w);
 	assert(res == 0);
 
-	w->e = w->events;
-	w->evnum = 0;
+	clear_events(w);
 
 	while(1)
 	{
@@ -166,47 +221,9 @@ static void *work(void *data)
 			syslog(LOG_DEBUG, "%d events returned", w->evnum);
 		}
 
-		for (w->e = &w->events[0]; w->e < &w->events[w->evnum]; ++w->e)
-		{
-			struct epoll_event *e;
-			e = w->e;
-
-			if ((e->events & EPOLLERR) ||
-				(e->events & EPOLLHUP) ||
-				!((e->events & EPOLLIN) || (e->events & EPOLLOUT)))
-			{
-				if (find_service(w->p, e->data.ptr)) {
-					syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on listening fd", get_service_fd((struct es_service*)e->data.ptr), e->events);
-				} else {
-					syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on working fd", get_conn_fd((struct es_conn*)e->data.ptr), e->events);
-//					close_connection((struct es_conn*)e->data.ptr);
-				}
-			}
-			if (find_service(w->p, e->data.ptr)) {
-//				accept_all_connection(w->p);
-				struct es_conn *conn;
-				while (NULL != (conn = accept_connection((struct es_service*)e->data.ptr))) {
-					es_addconn(w->p, conn);
-				}
-			} else if (e->events & EPOLLIN) {
-				read_data((struct es_conn*)e->data.ptr);
-			} else if (e->events & EPOLLOUT) {
-				send_buffered_data(((struct es_conn*)e->data.ptr), 0);
-			} else {
-				syslog(LOG_INFO, "%s:%d: events = 0x%x", "epoll event neither IN nor OUT", get_conn_fd((struct es_conn*)e->data.ptr), e->events);
-			}
-
-			checksync(w);
-			if (w->evnum == 0) { // events unloaded
-				break;
-			}
-		}
-
-		w->e = w->events;
-		w->evnum = 0;
+		process_events(w);
 	}
 
-	free(events);
 	return NULL;
 }
 
