@@ -182,7 +182,7 @@ struct es_service *es_newservice(char *ip, int port, struct es_connmgr *cq, es_c
 	return svr;
 }
 
-size_t get_conn_num(struct es_service *s)
+size_t es_getconnnum(struct es_service *s)
 {
 	return get_active_conn_num(s->cq);
 }

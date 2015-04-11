@@ -66,7 +66,7 @@ struct es_worker {
 
 static void unload_events(struct es_worker *w)
 {
-	push_events(w->e+1, w->events + w->evnum - w->e - 1);
+	push_events(w->e+1, w->events + w->evnum - w->e - 1); // current event has been processed
 	w->e = w->events;
 	w->evnum = 0;
 }

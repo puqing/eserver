@@ -53,7 +53,6 @@ struct es_connmgr *es_newconnmgr(int fd_base,
 		size_t size,
 		size_t read_buf_size,
 		size_t write_buf_size);
-void es_logconnmgr(struct es_connmgr *cq);
 
 typedef void es_connhandler(struct es_conn *conn);
 struct es_conn *es_newconn(const char *ip, int port, struct es_connmgr *cq, es_connhandler *ch);
@@ -68,6 +67,7 @@ struct es_service;
 struct es_service *es_newservice(char *ip, int port,
 		struct es_connmgr *cq,
 		es_connhandler *ch);
+size_t es_getconnnum(struct es_service *s);
 
 /*
  * Poller represents epoll. It accepts both services and 
