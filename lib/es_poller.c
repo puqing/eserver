@@ -131,9 +131,15 @@ int rearm_out(struct es_poller *p, struct es_conn *conn, int rearm)
 {
 	struct epoll_event event;
 	int res;
+	struct event_data *evdata;
 
 	LOG_CONN(LOG_DEBUG, "Rearm out %d", rearm);
-//	event.data.ptr = conn;
+
+	evdata = malloc(sizeof(*evdata));
+	evdata->type = ST_SERVER;
+	evdata->data.conn = conn;
+
+	event.data.ptr = evdata; // TODO: old evdata is not released. leak!!!
 	event.events = EPOLLET | EPOLLIN | (rearm?EPOLLOUT:0);
 	res = epoll_ctl(p->fd, EPOLL_CTL_MOD, get_conn_fd(conn), &event);
 	if (res == -1)
