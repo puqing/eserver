@@ -70,20 +70,18 @@ struct es_service *es_newservice(char *ip, int port,
 size_t es_getconnnum(struct es_service *s);
 
 /*
- * Poller represents epoll. It accepts both services and 
- * individual connections.
+ * Epoll functions
  */
-struct es_poller;
-struct es_poller *es_newpoller(void);
-void es_addservice(struct es_poller *p, struct es_service *s);
-void es_addconn(struct es_poller *p, struct es_conn *conn, int client_side);
+int es_newepfd(void);
+int es_addservice(int epfd, struct es_service *s);
+int es_addconn(int epfd, struct es_conn *conn, int client_side);
 
 /*
  * A es_worker is a thread.
  * Each es_worker can have a user-data.
  */
 struct es_worker;
-struct es_worker *es_newworker(struct es_poller *p, void *data);
+struct es_worker *es_newworker(int epfd, void *data);
 void *es_getworkerdata();
 typedef void es_workerhandler(void *data);
 

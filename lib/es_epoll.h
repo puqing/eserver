@@ -1,10 +1,6 @@
-struct es_poller;
 struct event_data;
 
-int get_poller_fd(struct es_poller *p);
-int rearm_out(struct es_poller *p, struct es_conn *conn, int rearm);
-
-struct es_poller *es_createpoller();
+int rearm_out(int epfd, struct es_conn *conn, int rearm);
 
 inline static struct es_service *ptr_to_service(const void *ptr)
 {

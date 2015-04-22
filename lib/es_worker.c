@@ -16,7 +16,7 @@
 #include "es_connmgr.h"
 #include "es_conn.h"
 #include "es_service.h"
-#include "es_poller.h"
+#include "es_epoll.h"
 
 // Better be no less than MAXEVENTS * thread_num
 #define EVENTSTACKSIZE 1024
@@ -55,7 +55,7 @@ static int pop_events(struct epoll_event *e, int num)
 #define MAXEVENTS 64
 
 struct es_worker {
-	struct es_poller *p;
+	int epfd;
 	pthread_t tid;
 	void *data;
 
@@ -151,7 +151,7 @@ static void clear_events(struct es_worker *w)
 	w->evnum = 0;
 }
 
-static void log_exceptional_events(uint32_t events, struct es_poller *p, void *ptr)
+static void log_exceptional_events(uint32_t events, int epfd, void *ptr)
 {
 	if ((events & EPOLLERR) ||
 		(events & EPOLLHUP) ||
@@ -169,12 +169,12 @@ static void process_events(struct es_worker *w)
 {
 	for (w->e = &w->events[0]; w->e < &w->events[w->evnum]; ++w->e)
 	{
-		log_exceptional_events(w->e->events, w->p, w->e->data.ptr);
+		log_exceptional_events(w->e->events, w->epfd, w->e->data.ptr);
 
 		if (ptr_to_service(w->e->data.ptr)) {
 			struct es_conn *conn;
 			while (NULL != (conn = accept_connection(ptr_to_service(w->e->data.ptr)))) {
-				es_addconn(w->p, conn, 0);
+				es_addconn(w->epfd, conn, 0);
 			}
 		} else if ((w->e->events & EPOLLIN)) {
 			read_data(w->e->data.ptr);
@@ -213,8 +213,8 @@ static void *work(void *data)
 
 		if (w->evnum == 0) {
 			syslog(LOG_DEBUG, "Begin read poll 0x%lx: %d:",
-					pthread_self(), get_poller_fd(w->p));
-			w->evnum = epoll_wait(get_poller_fd(w->p), w->events, MAXEVENTS, -1);
+					pthread_self(), w->epfd);
+			w->evnum = epoll_wait(w->epfd, w->events, MAXEVENTS, -1);
 			syslog(LOG_DEBUG, "%d events returned", w->evnum);
 		}
 
@@ -246,13 +246,13 @@ int es_getworkingnum(void)
 	return g_workingnum;
 }
 
-struct es_worker *es_newworker(struct es_poller *p, void *data)
+struct es_worker *es_newworker(int epfd, void *data)
 {
 	struct es_worker *w = malloc(sizeof(struct es_worker));
 
 	inc_workernum();
 
-	w->p = p;
+	w->epfd = epfd;
 	w->data = data;
 	pthread_once(&g_key_once, make_key);
 	pthread_create(&w->tid, NULL, work, (void*)w);

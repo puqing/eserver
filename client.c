@@ -18,8 +18,6 @@
 
 static unsigned long g_conn_total = 0;
 
-static struct es_poller *g_p;
-
 static int process_message(struct es_conn *conn, const char *msg, size_t len)
 {
 	write(1, msg, len);
@@ -61,7 +59,7 @@ int main(int argc, char *argv[])
 	short port;
 	struct es_connmgr *cq;
 	long i;
-	struct es_poller *p;
+	int epfd;
 	float avg_conn_per_sec;
 	time_t end_time;
 
@@ -81,7 +79,7 @@ int main(int argc, char *argv[])
 
 	cq = es_newconnmgr(1000, 2000, 1024, 512);
 
-	p = es_newpoller();
+	epfd = es_newepfd();
 
 	for (i = 0; i < CONN_NUM; ++i) {
 		const char *data = "origin";
@@ -93,9 +91,7 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 
-		es_addconn(p, conn, 1);
-
-		g_p = p;
+		es_addconn(epfd, conn, 1);
 
 		len = rand()*1.0/RAND_MAX*strlen(data);
 		++len;
@@ -107,7 +103,7 @@ int main(int argc, char *argv[])
 	}
 
 	for (i = 0; i < THREADNUM; ++i) {
-		es_newworker(p, (void*)i);
+		es_newworker(epfd, (void*)i);
 	}
 
 	time(&start_time);

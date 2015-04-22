@@ -12,8 +12,7 @@ struct es_conn *get_conn(struct es_conn *conn_array, size_t i);
 struct es_service;
 void init_connection(struct es_conn *conn, int fd, size_t read_buf_size, size_t write_buf_size, struct es_connmgr *cq);
 
-struct es_poller;
-void set_conn_poller(struct es_conn *conn, struct es_poller *p);
+void set_conn_epfd(struct es_conn *conn, int epfd);
 
 // log level: LOG_DEBUG for more messages, or LOG_INFO for less
 #define LOG_LIMIT LOG_INFO

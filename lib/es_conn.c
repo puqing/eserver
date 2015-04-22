@@ -15,7 +15,7 @@
 #include "es_connmgr.h"
 #include "es_conn.h"
 #include "es_service.h"
-#include "es_poller.h"
+#include "es_epoll.h"
 
 struct es_conn
 {
@@ -27,7 +27,7 @@ struct es_conn
 	int reading;
 	pthread_mutex_t read_lock;
 	pthread_mutex_t write_buf_lock;
-	struct es_poller *p;
+	int epfd;
 	es_messagehandler *msg_handler;
 	es_closehandler *close_handler;
 	struct es_connmgr *cq;
@@ -164,7 +164,7 @@ void send_buffered_data(struct es_conn *conn, int direct_send)
 		pthread_mutex_lock(&conn->write_buf_lock);
 
 		if (conn->write_buf == conn->write_buf_end) {
-			if(!direct_send) rearm_out(conn->p, conn, 0);
+			if(!direct_send) rearm_out(conn->epfd, conn, 0);
 			pthread_mutex_unlock(&conn->write_buf_lock);
 			break;
 		}
@@ -186,7 +186,7 @@ void send_buffered_data(struct es_conn *conn, int direct_send)
 		} else {
 			assert(res == -1);
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				if (direct_send) rearm_out(conn->p, conn, 1);
+				if (direct_send) rearm_out(conn->epfd, conn, 1);
 			}
 			pthread_mutex_unlock(&conn->write_buf_lock);
 			SYSLOG_ERROR("write");
@@ -318,9 +318,9 @@ struct es_conn *get_conn(struct es_conn *conn_array, size_t i)
 	return &conn_array[i];
 }
 
-void set_conn_poller(struct es_conn *conn, struct es_poller *p)
+void set_conn_epfd(struct es_conn *conn, int epfd)
 {
-	conn->p = p;
+	conn->epfd = epfd;
 }
 
 void es_setconndata(struct es_conn *conn, void *data)

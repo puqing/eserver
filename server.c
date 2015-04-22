@@ -61,7 +61,7 @@ int main(int argc, char *argv[])
 {
 
 	int port = 0;
-	struct es_poller *p;
+	int epfd;
 	struct es_connmgr *cq;
 	struct es_service *s;
 	long i;
@@ -87,16 +87,16 @@ int main(int argc, char *argv[])
 
 	syslog(LOG_INFO, "server start");
 
-	p = es_newpoller();
+	epfd = es_newepfd();
 
 	cq = es_newconnmgr(1000, 2000, 1024, 1024);
 
 	s = es_newservice(NULL, port, cq, &process_connection);
 
-	es_addservice(p, s);
+	es_addservice(epfd, s);
 
 	for (i = 0; i < THREADNUM; ++i) {
-		es_newworker(p, (void*)i);
+		es_newworker(epfd, (void*)i);
 	}
 
 	while (1) {
@@ -105,9 +105,7 @@ int main(int argc, char *argv[])
 		sleep(1);
 	}
 
-	/* TODO
-	stop_poller(p);
-
+	/* TODO: close services
 	syslog(LOG_INFO, "server stop");
 
 	closelog();
