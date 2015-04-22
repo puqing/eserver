@@ -100,7 +100,8 @@ int main(int argc, char *argv[])
 	}
 
 	while (1) {
-		es_logconnmgr(cq);
+		syslog(LOG_INFO, "Connection number = %ld\n", \
+				es_getconnnum(s));
 		sleep(1);
 	}
 

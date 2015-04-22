@@ -157,10 +157,10 @@ static void log_exceptional_events(uint32_t events, struct es_poller *p, void *p
 		(events & EPOLLHUP) ||
 		!((events & EPOLLIN) || (events & EPOLLOUT)))
 	{
-		if (event_service(ptr)) {
-//			syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on listening fd", get_service_fd((struct es_service*)ptr), events);
+		if (ptr_to_service(ptr)) {
+			syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on listening fd", get_service_fd(ptr_to_service(ptr)), events);
 		} else {
-//			syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on working fd", get_conn_fd((struct es_conn*)ptr), events);
+			syslog(LOG_ERR, "%s:%d: events = 0x%x", "epoll error on working fd", get_conn_fd(ptr), events);
 		}
 	}
 }
@@ -171,25 +171,17 @@ static void process_events(struct es_worker *w)
 	{
 		log_exceptional_events(w->e->events, w->p, w->e->data.ptr);
 
-		if (event_service(w->e->data.ptr)) {
+		if (ptr_to_service(w->e->data.ptr)) {
 			struct es_conn *conn;
-			while (NULL != (conn = accept_connection(event_service(w->e->data.ptr)))) {
+			while (NULL != (conn = accept_connection(ptr_to_service(w->e->data.ptr)))) {
 				es_addconn(w->p, conn, 0);
 			}
 		} else if ((w->e->events & EPOLLIN)) {
-			if (event_server_conn(w->e->data.ptr)) {
-				read_data(event_server_conn(w->e->data.ptr));
-			} else {
-				read_data(event_client_conn(w->e->data.ptr));
-			}
+			read_data(w->e->data.ptr);
 		} else if (w->e->events & EPOLLOUT) {
-			if (event_server_conn(w->e->data.ptr)) {
-				send_buffered_data(event_server_conn(w->e->data.ptr), 0);
-			} else {
-				send_buffered_data(event_client_conn(w->e->data.ptr), 0);
-			}
+			send_buffered_data(w->e->data.ptr, 0);
 		} else {
-//			syslog(LOG_INFO, "%s:%d: events = 0x%x", "epoll event neither IN nor OUT", get_conn_fd(event_server_conn(w->e->data.ptr)), w->e->events);
+			syslog(LOG_INFO, "%s:%d: events = 0x%x", "epoll event neither IN nor OUT", get_conn_fd(w->e->data.ptr), w->e->events);
 		}
 
 		checksync(w);
