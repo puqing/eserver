@@ -1,3 +1,10 @@
+#include "es_connmgr.h"
+#include "es_conn.h"
+#include "es_service.h"
+#include "es_epoll.h"
+
+#include <esvr.h>
+
 #include <stdio.h>
 #include <string.h>
 #include <sys/epoll.h>
@@ -10,13 +17,6 @@
 #include <syslog.h>
 #include <assert.h>
 #include <signal.h>
-
-#include <esvr.h>
-
-#include "es_connmgr.h"
-#include "es_conn.h"
-#include "es_service.h"
-#include "es_epoll.h"
 
 // Better be no less than MAXEVENTS * thread_num
 #define EVENTSTACKSIZE 1024

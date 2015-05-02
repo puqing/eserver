@@ -1,3 +1,9 @@
+#include "es_connmgr.h"
+#include "es_service.h"
+#include "es_conn.h"
+
+#include <esvr.h>
+
 #include <syslog.h>
 #include <unistd.h>
 #include <signal.h>
@@ -7,12 +13,6 @@
 #include <string.h>
 #include <pthread.h>
 #include <assert.h>
-
-#include <esvr.h>
-
-#include "es_connmgr.h"
-#include "es_service.h"
-#include "es_conn.h"
 
 /***************************
 *    Connection Manager    *

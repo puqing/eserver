@@ -1,3 +1,5 @@
+#include <esvr.h>
+
 #include <netdb.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -11,8 +13,6 @@
 #include <syslog.h>
 #include <fcntl.h>
 #include <time.h>
-
-#include <esvr.h>
 
 #define PERROR(s) printf("%s:%d: %s: %s\n", __FILE__, __LINE__, s, strerror(errno))
 

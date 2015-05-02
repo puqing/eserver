@@ -1,3 +1,5 @@
+#include <esvr.h>
+
 #include <syslog.h>
 #include <unistd.h>
 #include <signal.h>
@@ -5,8 +7,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-
-#include <esvr.h>
 
 static int process_message(struct es_conn *conn, const char *msg, size_t len)
 {

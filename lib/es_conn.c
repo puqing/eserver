@@ -1,3 +1,10 @@
+#include "es_conn.h"
+#include "es_connmgr.h"
+#include "es_service.h"
+#include "es_epoll.h"
+
+#include <esvr.h>
+
 #include <stdio.h>
 #include <string.h>
 #include <netdb.h>
@@ -9,13 +16,6 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <arpa/inet.h>
-
-#include <esvr.h>
-
-#include "es_connmgr.h"
-#include "es_conn.h"
-#include "es_service.h"
-#include "es_epoll.h"
 
 struct es_conn
 {
